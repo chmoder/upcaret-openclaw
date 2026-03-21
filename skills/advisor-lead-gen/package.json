@@ -1,0 +1,46 @@
+{
+  "name": "sec-iapd-advisor-enrichment",
+  "version": "3.1.0",
+  "description": "SEC IAPD download (extract-advisors.js) + OpenClaw agent-to-agent enrichment (orchestrator.js)",
+  "main": "scripts/extract-advisors.js",
+  "scripts": {
+    "extract": "node scripts/extract-advisors.js",
+    "orchestrate": "node scripts/orchestrator.js",
+    "status": "node scripts/status-dashboard.js",
+    "db:init": "node scripts/db-init.js",
+    "bootstrap": "node scripts/bootstrap.js",
+    "setup:openclaw": "node scripts/openclaw-setup.js",
+    "test": "node scripts/check-skill-layout.js",
+    "env:help": "node scripts/env-help.js"
+  },
+  "keywords": [
+    "financial-services",
+    "sec-iapd",
+    "openclaw",
+    "advisor-enrichment"
+  ],
+  "author": "OpenClaw",
+  "license": "MIT",
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "env": {
+    "BRAVE_API_KEY": {
+      "required": true,
+      "description": "Brave Search API key for web discovery (enrichment only)"
+    },
+    "ANTHROPIC_API_KEY": {
+      "required": false,
+      "description": "Optional; depends on OpenClaw/model configuration"
+    },
+    "FIRECRAWL_API_KEY": {
+      "required": false,
+      "description": "Optional paid fetcher"
+    },
+    "HUNTER_API_KEY": {
+      "required": false,
+      "description": "Optional email verification"
+    }
+  }
+}
