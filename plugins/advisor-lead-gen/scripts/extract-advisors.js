@@ -9,10 +9,16 @@
  *   node extract-advisors.js --state CA --start 100 --limit 200 --output report.json
  */
 
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
-const { openDb, dbRun, dbAll, dbGet: _dbGet } = require('./db');
+import https from "node:https";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { dbAll, dbGet as _dbGet, dbRun, openDb } from "./db.js";
+import { initSchema } from "./db-init.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Parse command-line arguments
 const args = process.argv.slice(2);
@@ -62,7 +68,7 @@ if (!Number.isInteger(limit) || limit < 1) {
   process.exit(1);
 }
 
-const dbPath = path.join(__dirname, '../advisors.db');
+const dbPath = path.join(__dirname, "..", "advisors.db");
 
 // Open a single DB connection for the lifetime of this process run.
 const _db = openDb(dbPath);
@@ -107,7 +113,6 @@ function fetchSEC(query) {
 }
 
 async function ensureDbSchema() {
-  const { initSchema } = require('./db-init');
   initSchema(_db);
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { formatEnvHelp } = require('./env');
+import { formatEnvHelp } from "./env.js";
 
 console.log(formatEnvHelp());
 

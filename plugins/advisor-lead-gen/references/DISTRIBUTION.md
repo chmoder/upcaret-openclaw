@@ -10,6 +10,17 @@
 
 **`openclaw plugins install advisor-lead-gen`**, set your `BRAVE_API_KEY`, restart the gateway — cron starts automatically on every boot from that point on.
 
+## Upgrades (every new release)
+
+After you publish a new version (ClawHub and/or npm), operators pull it with the same toolchain — no repo paths:
+
+```bash
+openclaw plugins update advisor-lead-gen
+openclaw gateway restart
+```
+
+Use `openclaw plugins update --all` if you prefer to refresh every tracked plugin. Npm-based installs can also use `openclaw plugins install advisor-lead-gen@<version>` to pin or move versions.
+
 ---
 
 ## What "ready to distribute" means
@@ -33,9 +44,9 @@ npm test
 
 **Exclude** from archives: `node_modules/`, `advisors.db`, `.env`, `*.log`, `.DS_Store`.
 
-**Include** everything else: `scripts/`, `agents/`, `references/`, `SKILL.md`, `IDENTITY.md`, `package.json`, `package-lock.json`, `openclaw.plugin.json`, `plugin-entry.ts`, `ecosystem.config.js`, `ARCHITECTURE.md`, `README.md`.
+**Include** everything else: `scripts/`, `agents/`, `references/`, `SKILL.md`, `IDENTITY.md`, `package.json`, `package-lock.json`, `openclaw.plugin.json`, `plugin-entry.ts`, `ecosystem.config.cjs`, `ARCHITECTURE.md`, `README.md`.
 
-Suggested archive name: `sec-iapd-advisor-enrichment-<version>.zip`
+Suggested archive name: `advisor-lead-gen-<version>.zip`
 
 ---
 
@@ -52,24 +63,23 @@ openclaw agents add advisor-enrich \
 openclaw gateway restart
 ```
 
-### Option B: Local dev / zip handoff
+### Option B: Offline zip (air-gapped / handoff)
+
+Extract the release archive into OpenClaw’s extensions tree, then enable and finish setup (same as Option A after files are on disk):
 
 ```bash
-# Link in place (dev — changes in repo are live immediately):
-openclaw plugins install -l /path/to/advisor-lead-gen
-
-# Or extract a zip:
 mkdir -p ~/.openclaw/extensions/advisor-lead-gen
-unzip sec-iapd-advisor-enrichment-<version>.zip \
+unzip advisor-lead-gen-<version>.zip \
   -d ~/.openclaw/extensions/advisor-lead-gen
 
-# Then continue:
 openclaw plugins enable advisor-lead-gen
 openclaw config set env.BRAVE_API_KEY "<key>"
 openclaw agents add advisor-enrich \
   --workspace ~/.openclaw/extensions/advisor-lead-gen
 openclaw gateway restart
 ```
+
+Treat zip updates like any other release: replace the directory contents with a new build, then **`openclaw gateway restart`** (and use **`openclaw plugins update`** when the install is tracked as npm/marketplace).
 
 ### Option C: From OpenClaw chat
 

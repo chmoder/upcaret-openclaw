@@ -16,8 +16,8 @@
  * the cron marks it 'failed' and resets the session so the next queued advisor
  * can proceed. The stale advisor can be re-queued manually.
  *
- * Managed by PM2 — use ecosystem.config.js (same on Docker, Linux, macOS, Windows):
- *   npm run cron:start      # pm2 start ecosystem.config.js
+ * Managed by PM2 — use ecosystem.config.cjs (same on Docker, Linux, macOS, Windows):
+ *   npm run cron:start      # pm2 start ecosystem.config.cjs
  *   npm run cron:stop       # pm2 stop advisor-cron  (sends SIGTERM)
  *   npm run cron:status     # pm2 status advisor-cron
  *   npm run cron:logs       # pm2 logs advisor-cron
@@ -41,13 +41,16 @@
  * Uses node:sqlite (built-in Node 22.5+) — no npm install required.
  */
 
-"use strict";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-const path = require("path");
-const { spawnSync } = require("child_process");
-const { openDb, dbGet } = require("./db");
-const { initSchema } = require("./db-init");
-const { resetSession } = require("./reset-session");
+import { openDb, dbGet } from "./db.js";
+import { initSchema } from "./db-init.js";
+import { resetSession } from "./reset-session.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const DB_PATH = path.join(__dirname, "..", "advisors.db");
 const AGENT_ID = process.env.ADVISOR_ORCH_AGENT_ID || "advisor-enrich";

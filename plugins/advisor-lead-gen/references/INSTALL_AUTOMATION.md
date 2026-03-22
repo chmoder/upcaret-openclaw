@@ -10,10 +10,7 @@ This skill ships as a native **OpenClaw plugin**. Installing the plugin handles:
 ## Install sequence
 
 ```bash
-# 1. Install the plugin (links in place for local dev)
-openclaw plugins install -l /path/to/advisor-lead-gen
-
-# From ClawHub (when published):
+# 1. Install the plugin (ClawHub / marketplace id — or npm spec, e.g. advisor-lead-gen@3.1.0)
 openclaw plugins install advisor-lead-gen
 
 # 2. Enable the plugin
@@ -27,15 +24,22 @@ openclaw config set env.BRAVE_API_KEY "<your-brave-search-api-key>"
 openclaw agents add advisor-enrich \
   --workspace ~/.openclaw/extensions/advisor-lead-gen
 
-# Via Docker:
+# Via Docker (from your openclaw compose directory):
 docker compose run --rm -T openclaw-cli agents add advisor-enrich \
-  --workspace "/home/node/.openclaw/extensions/advisor-lead-gen"
+  --workspace ~/.openclaw/extensions/advisor-lead-gen
 
 # 5. Restart gateway — plugin activates, PM2 starts, cron is online
 openclaw gateway restart
 ```
 
 Every restart after that: the `gateway:startup` hook fires automatically, PM2 starts `advisor-cron` if it is not already running. No manual steps ever again.
+
+## Upgrading to a new release
+
+```bash
+openclaw plugins update advisor-lead-gen
+openclaw gateway restart
+```
 
 ## What OpenClaw must own (not inside this folder)
 
@@ -52,10 +56,10 @@ Every restart after that: the `gateway:startup` hook fires automatically, PM2 st
 The `gateway:startup` hook (`plugin-entry.ts`) runs these checks idempotently:
 
 1. **Node version** — requires 22.5+; logs an error with upgrade link if too old.
-2. **Required files** — spot-checks `IDENTITY.md`, `scripts/dispatch-cron.js`, `ecosystem.config.js`; logs an error with reinstall instruction if missing.
+2. **Required files** — spot-checks `IDENTITY.md`, `scripts/dispatch-cron.js`, `ecosystem.config.cjs`; logs an error with reinstall instruction if missing.
 3. **`BRAVE_API_KEY`** — logs an error with `openclaw config set` command if not set.
 4. **DB schema** — calls `initSchema` from `scripts/db-init.js` (idempotent, safe every boot).
-5. **PM2 + advisor-cron** — if `advisor-cron` is not `online`, runs `pm2 start ecosystem.config.js && pm2 save --force`. Logs a clear error if `pm2` is not on PATH.
+5. **PM2 + advisor-cron** — if `advisor-cron` is not `online`, runs `pm2 start ecosystem.config.cjs && pm2 save --force`. Logs a clear error if `pm2` is not on PATH.
 
 All errors are collected and logged together so the operator sees everything at once, with actionable fix commands.
 
@@ -71,7 +75,7 @@ openclaw gateway restart
 
 ## Script helpers (still available)
 
-- **`npm run setup:openclaw`** — Runs `openclaw plugins install -l` and `openclaw plugins enable` automatically if the CLI is on PATH, then prints the remaining manual steps (API key, agents add, gateway restart).
+- **`npm run setup:openclaw`** — If the OpenClaw CLI is on `PATH`, attempts `openclaw plugins install` / `enable` for the published plugin, then prints the remaining manual steps (API key, agents add, gateway restart).
 - **`npm run env:help`** — Lists all environment variables and their purpose.
 - **`npm run status`** — Shows the enrichment status dashboard.
 - **`npm run bootstrap`** — Manual idempotent setup (Node check, file check, DB init). Rarely needed now that the plugin hook covers it.

@@ -1,4 +1,4 @@
-const ENV_SPECS = [
+export const ENV_SPECS = [
   {
     name: 'BRAVE_API_KEY',
     required: true,
@@ -89,7 +89,7 @@ function mask(value) {
   return `${s.slice(0, 2)}…${s.slice(-2)}`;
 }
 
-function envStatus() {
+export function envStatus() {
   return ENV_SPECS.map((s) => ({
     ...s,
     set: isSet(s.name),
@@ -97,9 +97,9 @@ function envStatus() {
   }));
 }
 
-function formatEnvHelp() {
+export function formatEnvHelp() {
   const lines = [];
-  lines.push('Environment variables for sec-iapd-advisor-enrichment:\n');
+  lines.push("Environment variables for advisor-lead-gen:\n");
 
   for (const s of envStatus()) {
     lines.push(`- ${s.name}${s.required ? ' (required)' : ' (optional)'}`);
@@ -120,7 +120,7 @@ function formatEnvHelp() {
   return lines.join('\n');
 }
 
-function validateEnv({ requiredOnly = true } = {}) {
+export function validateEnv({ requiredOnly = true } = {}) {
   const missing = [];
   for (const s of ENV_SPECS) {
     if (requiredOnly && !s.required) continue;
@@ -129,7 +129,7 @@ function validateEnv({ requiredOnly = true } = {}) {
   return { ok: missing.length === 0, missing };
 }
 
-function validateApiKeys({ requireAll = false } = {}) {
+export function validateApiKeys({ requireAll = false } = {}) {
   const missing = [];
   for (const s of ENV_SPECS.filter((x) => x.kind === 'api_key')) {
     const mustHave = requireAll ? true : s.required;
@@ -139,7 +139,7 @@ function validateApiKeys({ requireAll = false } = {}) {
   return { ok: missing.length === 0, missing };
 }
 
-function envErrorMessage(missing) {
+export function envErrorMessage(missing) {
   const lines = [];
   lines.push('Missing required environment variables:');
   for (const name of missing) lines.push(`- ${name}`);
@@ -162,12 +162,11 @@ function envErrorMessage(missing) {
   return lines.join('\n');
 }
 
-module.exports = {
+export default {
   ENV_SPECS,
   envStatus,
   formatEnvHelp,
   validateEnv,
   validateApiKeys,
-  envErrorMessage
+  envErrorMessage,
 };
-

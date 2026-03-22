@@ -13,10 +13,14 @@
  *
  * Uses node:sqlite (built-in Node 22.5+) — no npm install required.
  */
-const fs = require("fs");
-const path = require("path");
-const { openDb, dbAll: _dbAll } = require("./db");
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
+import { openDb, dbAll as _dbAll } from "./db.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const ROOT = path.join(__dirname, "..");
 const DEFAULT_DB_PATH = path.join(ROOT, "advisors.db");
 

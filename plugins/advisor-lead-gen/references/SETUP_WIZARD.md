@@ -106,7 +106,7 @@ npm install -g pm2
 **② Start the cron:**
 ```bash
 cd ~/.openclaw/extensions/advisor-lead-gen
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 pm2 save
 # or via the skill: npm run cron:start && npm run cron:save
 ```
@@ -120,7 +120,7 @@ pm2 save
 **For Docker** (run inside the container where `openclaw` CLI lives):
 ```bash
 docker exec <container> npm install -g pm2
-docker exec <container> sh -c "cd /home/node/.openclaw/extensions/advisor-lead-gen && pm2 start ecosystem.config.js && pm2 save"
+docker exec <container> sh -c "cd /home/node/.openclaw/extensions/advisor-lead-gen && pm2 start ecosystem.config.cjs && pm2 save"
 ```
 
 **Useful PM2 commands:**

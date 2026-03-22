@@ -12,11 +12,7 @@
  *   ADVISOR_ORCH_SESSION_KEY   default session:advisor-orchestrator
  */
 
-const path = require("path");
-const { spawnSync } = require("child_process");
-
-/** Plugin root = the directory this script lives in, one level up from scripts/. */
-const ROOT = path.resolve(path.join(__dirname, ".."));
+import { spawnSync } from "node:child_process";
 
 const DEFAULT_AGENT_ID = process.env.ADVISOR_ORCH_AGENT_ID || "advisor-enrich";
 const DEFAULT_SESSION_KEY =
@@ -24,6 +20,12 @@ const DEFAULT_SESSION_KEY =
 
 /** Canonical plugin install location (where OpenClaw places it after `plugins install`). */
 const PLUGIN_PATH = "~/.openclaw/extensions/advisor-lead-gen";
+
+/** Marketplace / ClawHub id (primary install spec). */
+const PLUGIN_MARKETPLACE_ID = "advisor-lead-gen";
+
+/** npm package name — fallback when marketplace install is unavailable. */
+const PLUGIN_NPM_SPEC = "advisor-lead-gen@latest";
 
 function which(cmd) {
   const bin = process.platform === "win32" ? "where" : "which";
@@ -69,8 +71,20 @@ function main() {
   );
 
   if (ocPath) {
-    console.log("  Attempting: openclaw plugins install -l ...");
-    const installResult = runOpenclaw(["plugins", "install", "-l", ROOT]);
+    console.log(
+      `  Attempting: openclaw plugins install ${PLUGIN_MARKETPLACE_ID} ...`,
+    );
+    let installResult = runOpenclaw([
+      "plugins",
+      "install",
+      PLUGIN_MARKETPLACE_ID,
+    ]);
+    if (!installResult.ok) {
+      console.log(
+        `  ⚠️  marketplace install failed; trying npm spec ${PLUGIN_NPM_SPEC} ...`,
+      );
+      installResult = runOpenclaw(["plugins", "install", PLUGIN_NPM_SPEC]);
+    }
     if (installResult.ok) {
       console.log("  OK  plugins install succeeded.\n");
     } else {
@@ -78,9 +92,9 @@ function main() {
         `  ⚠️  plugins install failed (may already be installed — that is OK):`,
       );
       console.log(`      ${installResult.stderr || installResult.stdout}`);
-      console.log(
-        "  Run manually if needed: openclaw plugins install -l " + ROOT + "\n",
-      );
+      console.log("  Run manually if needed:");
+      console.log(`    openclaw plugins install ${PLUGIN_MARKETPLACE_ID}`);
+      console.log(`    # or: openclaw plugins install ${PLUGIN_NPM_SPEC}\n`);
     }
 
     console.log("  Attempting: openclaw plugins enable advisor-lead-gen ...");
@@ -99,10 +113,9 @@ function main() {
   } else {
     console.log("  (skipping auto-install — openclaw CLI not on PATH)\n");
     console.log("  Run manually:");
-    console.log(`    openclaw plugins install -l ${ROOT}`);
+    console.log(`    openclaw plugins install ${PLUGIN_MARKETPLACE_ID}`);
+    console.log(`    # or: openclaw plugins install ${PLUGIN_NPM_SPEC}`);
     console.log("    openclaw plugins enable advisor-lead-gen\n");
-    console.log("  From ClawHub (when published):");
-    console.log("    openclaw plugins install advisor-lead-gen\n");
   }
 
   // ── Step 2: BRAVE_API_KEY ────────────────────────────────────────────────
@@ -151,10 +164,10 @@ function main() {
     `  openclaw agents add ${aid} \\\n` +
       `    --workspace "${PLUGIN_PATH}"\n`,
   );
-  console.log("  Via Docker (add -T to disable TTY):");
+  console.log("  Via Docker (add -T to disable TTY; run from your openclaw repo):");
   console.log(
     `    docker compose run --rm -T openclaw-cli agents add ${aid} \\\n` +
-      `      --workspace "/home/node/.openclaw/extensions/advisor-lead-gen"\n`,
+      `      --workspace ${PLUGIN_PATH}\n`,
   );
 
   // ── Step 4: Restart gateway ──────────────────────────────────────────────

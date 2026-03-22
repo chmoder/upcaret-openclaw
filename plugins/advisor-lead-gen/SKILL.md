@@ -28,14 +28,14 @@ Day-to-day:
 
 ## First-Time Setup
 
-1. Install the plugin: `openclaw plugins install advisor-lead-gen` (or `openclaw plugins install -l /path/to/advisor-lead-gen` for local dev). See **`references/SETUP_WIZARD.md`**.
+1. Install the plugin: `openclaw plugins install advisor-lead-gen` (or `openclaw plugins install advisor-lead-gen@<version>` from npm). See **`references/SETUP_WIZARD.md`**.
 2. Enable: `openclaw plugins enable advisor-lead-gen`
 3. Set `BRAVE_API_KEY`: `openclaw config set env.BRAVE_API_KEY "<key>"`
 4. Create the orchestrator agent: `openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen`
 5. Restart the gateway: `openclaw gateway restart` — PM2 starts automatically; the dispatch cron is live.
 6. Optionally run `npm run extract` to preload SEC advisor rows into `advisors.db`.
 
-`npm run setup:openclaw` automates steps 1–2 and prints the remaining commands.
+`npm run setup:openclaw` attempts steps 1–2 when the OpenClaw CLI is available and prints the remaining commands.
 For the full operator boundary, read `references/INSTALL_AUTOMATION.md`.
 
 ## Runtime Contract
@@ -182,7 +182,7 @@ advisor-lead-gen/
 ├── IDENTITY.md              ← orchestrator system prompt (advisor-enrich agent)
 ├── ARCHITECTURE.md
 ├── package.json
-├── ecosystem.config.js      ← PM2 config for dispatch-cron
+├── ecosystem.config.cjs     ← PM2 config for dispatch-cron
 ├── advisors.db              ← runtime data (not committed)
 ├── agents/
 │   ├── profile.md
@@ -258,7 +258,7 @@ The dispatch cron (`dispatch-cron.js`) is the only process that drains the queue
 Fix:
 ```bash
 cd ~/.openclaw/extensions/advisor-lead-gen
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 pm2 save
 ```
 

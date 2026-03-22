@@ -26,12 +26,15 @@
  * Uses node:sqlite (built-in Node 22.5+) — no npm install required.
  */
 
-'use strict';
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const path = require('path');
-const { openDb, dbRun, dbGet } = require('./db');
+import { dbGet, dbRun, openDb } from "./db.js";
 
-const DB_PATH = path.join(__dirname, '..', 'advisors.db');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DB_PATH = path.join(__dirname, "..", "advisors.db");
 
 function main() {
   // Accept either:
@@ -45,7 +48,7 @@ function main() {
       process.exit(1);
     }
     try {
-      raw = require('fs').readFileSync(filePath, 'utf8');
+      raw = fs.readFileSync(filePath, "utf8");
     } catch (err) {
       console.error(`ERROR: cannot read file ${filePath} — ${err.message}`);
       process.exit(1);

@@ -1,7 +1,8 @@
 {
-  "name": "sec-iapd-advisor-enrichment",
+  "name": "advisor-lead-gen",
   "version": "3.1.0",
   "description": "SEC IAPD download (extract-advisors.js) + OpenClaw agent-to-agent enrichment (IDENTITY.md orchestrator)",
+  "type": "module",
   "main": "scripts/extract-advisors.js",
   "scripts": {
     "extract": "node scripts/extract-advisors.js",
@@ -18,12 +19,12 @@
     "enqueue": "node scripts/enqueue-enrich.js",
     "cron": "node scripts/dispatch-cron.js",
     "cron:install": "npm install -g pm2",
-    "cron:start": "pm2 start ecosystem.config.js",
+    "cron:start": "pm2 start ecosystem.config.cjs",
     "cron:stop": "pm2 stop advisor-cron",
     "cron:restart": "pm2 restart advisor-cron",
     "cron:status": "pm2 status advisor-cron",
     "cron:logs": "pm2 logs advisor-cron",
-    "cron:save": "pm2 save"
+    "cron:save": "pm2 save --force"
   },
   "keywords": [
     "financial-services",

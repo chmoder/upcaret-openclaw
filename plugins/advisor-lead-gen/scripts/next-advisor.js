@@ -31,13 +31,15 @@
  * Uses node:sqlite (built-in Node 22.5+) — no npm install required.
  */
 
-'use strict';
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const path = require('path');
-const { openDb, dbGet } = require('./db');
-const { initSchema } = require('./db-init');
+import { dbGet, openDb } from "./db.js";
+import { initSchema } from "./db-init.js";
 
-const DB_PATH = path.join(__dirname, '..', 'advisors.db');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DB_PATH = path.join(__dirname, "..", "advisors.db");
 const DEFAULT_THRESHOLD_DAYS = 90;
 
 function parseArgs(argv) {

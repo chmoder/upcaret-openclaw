@@ -1,13 +1,24 @@
-import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
-export default definePluginEntry({
+// Preferred modern entry helper is `definePluginEntry` from:
+//   openclaw/plugin-sdk/plugin-entry
+// However, some OpenClaw builds/images ship without that subpath export.
+// We opportunistically use it when present, and fall back to the plain entry
+// object shape (which OpenClaw also supports) for maximum compatibility.
+let definePluginEntry: undefined | ((entry: any) => any);
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  definePluginEntry = require("openclaw/plugin-sdk/plugin-entry")?.definePluginEntry;
+} catch {}
+
+const entry = {
   id: "advisor-lead-gen",
   name: "SEC IAPD Advisor Lead Gen",
   description: "Manages advisor-cron and validates setup on gateway startup",
-  register(api) {
+  register(api: any) {
     // api.resolvePath is the correct way to get the plugin root under jiti.
     // import.meta.url resolves to jiti's own directory, not the plugin directory.
     const ROOT = api.resolvePath(".");
@@ -28,7 +39,7 @@ export default definePluginEntry({
       for (const rel of [
         "IDENTITY.md",
         "scripts/dispatch-cron.js",
-        "ecosystem.config.js",
+        "ecosystem.config.cjs",
       ]) {
         if (!existsSync(join(ROOT, rel))) {
           errors.push(`Missing ${rel} — reinstall the plugin.`);
@@ -44,8 +55,12 @@ export default definePluginEntry({
 
       // 4. DB schema — idempotent, safe to run on every boot
       try {
-        const { initSchema } = require(join(ROOT, "scripts/db-init.js"));
-        const { openDb } = require(join(ROOT, "scripts/db.js"));
+        const { initSchema } = await import(
+          pathToFileURL(join(ROOT, "scripts/db-init.js")).href,
+        );
+        const { openDb } = await import(
+          pathToFileURL(join(ROOT, "scripts/db.js")).href,
+        );
         const db = openDb(join(ROOT, "advisors.db"));
         try {
           initSchema(db);
@@ -76,13 +91,13 @@ export default definePluginEntry({
         } catch {}
 
         if (!online) {
-          const eco = join(ROOT, "ecosystem.config.js");
+          const eco = join(ROOT, "ecosystem.config.cjs");
           if (existsSync(eco)) {
             spawnSync("pm2", ["start", eco], { stdio: "ignore" });
             spawnSync("pm2", ["save", "--force"], { stdio: "ignore" });
             log.info("advisor-cron started via PM2.");
           } else {
-            errors.push("ecosystem.config.js missing — reinstall the plugin.");
+            errors.push("ecosystem.config.cjs missing — reinstall the plugin.");
           }
         }
       }
@@ -97,4 +112,6 @@ export default definePluginEntry({
       }
     });
   },
-});
+};
+
+export default typeof definePluginEntry === "function" ? definePluginEntry(entry) : entry;

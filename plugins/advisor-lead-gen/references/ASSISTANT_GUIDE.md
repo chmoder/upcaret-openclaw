@@ -14,7 +14,7 @@ This skill is used from **chat**. The model (main agent) should **try OpenClaw f
 - **Do not initialize a git repo** or create `.git/` in the skill directory.
 - **Do not create markdown files.** Point the user to existing docs instead.
 - **Report failures honestly.** If exec is unavailable, the CLI is missing, or the SEC API is unreachable, say so and give the user exact steps to resolve it. Never silently work around a failure.
-- **The dispatch cron must be running for enrichment to work.** Queued rows sit forever if `advisor-cron` is not online in PM2. After setup, always verify with `pm2 status` and confirm `advisor-cron` is `online`. If not, start it: `cd ~/.openclaw/extensions/advisor-lead-gen && pm2 start ecosystem.config.js && pm2 save`.
+- **The dispatch cron must be running for enrichment to work.** Queued rows sit forever if `advisor-cron` is not online in PM2. After setup, always verify with `pm2 status` and confirm `advisor-cron` is `online`. If not, start it: `cd ~/.openclaw/extensions/advisor-lead-gen && pm2 start ecosystem.config.cjs && pm2 save`.
 - **Never tell the user to configure ACP, Discord, or Slack to enable enrichment.** Errors from `sessions_spawn` (including "ACP not configured") mean that approach is wrong — not that enrichment is impossible. The exec path (`openclaw agent --agent advisor-enrich`) works without ACP and without persistent channels. Use it.
 
 ---
@@ -37,10 +37,10 @@ Say something like: "Found the skill — running bootstrap and setup now." Then 
    ```bash
    cd ~/.openclaw/extensions/advisor-lead-gen
    npm install -g pm2                  # one-time; inside Docker: npm install -g pm2 --prefix /usr/local
-   pm2 start ecosystem.config.js
+   pm2 start ecosystem.config.cjs
    pm2 save
    ```
-   Verify it is running: `pm2 status` should show `advisor-cron` as `online`. If `pm2` is not on PATH after install, use `npx --yes pm2 start ecosystem.config.js` as a fallback (it spawns its own daemon under `~/.pm2`). Either way, confirm `advisor-cron` is `online` before telling the user setup is complete.
+   Verify it is running: `pm2 status` should show `advisor-cron` as `online`. If `pm2` is not on PATH after install, use `npx --yes pm2 start ecosystem.config.cjs` as a fallback (it spawns its own daemon under `~/.pm2`). Either way, confirm `advisor-cron` is `online` before telling the user setup is complete.
 6. Verify with `sessions_list` → confirm session with `agentId: "advisor-enrich"` present → `sessions_send ENV` (with `agentId: "advisor-enrich"`).
 
 If exec is unavailable, skip to **`SETUP_WIZARD.md`** Fallback block and give the user exact copy-paste commands — still no menu.

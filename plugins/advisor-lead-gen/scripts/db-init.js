@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * SEC IAPD Advisor Database Initialization
  * Ensures SQLite database schema for advisors/findings is present.
@@ -8,11 +7,14 @@
  * Uses node:sqlite (built-in Node 22.5+) — no sqlite3 CLI required.
  */
 
-const path = require('path');
-const fs = require('fs');
-const { openDb, dbRun, dbAll } = require('./db');
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { dbAll, dbRun, openDb } from "./db.js";
 
-const dbPath = path.join(__dirname, '../advisors.db');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const dbPath = path.join(__dirname, "..", "advisors.db");
 
 function ensureColumn(db, table, column, definition) {
   const cols = dbAll(db, `PRAGMA table_info(${table});`).map((c) => c.name);
@@ -22,7 +24,7 @@ function ensureColumn(db, table, column, definition) {
   }
 }
 
-function initSchema(db) {
+export function initSchema(db) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS advisors (
       sec_id INTEGER PRIMARY KEY,
@@ -132,7 +134,11 @@ function initSchema(db) {
   }
 }
 
-if (require.main === module) {
+const isMain =
+  Boolean(process.argv[1]) &&
+  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+
+if (isMain) {
   const dbExisted = fs.existsSync(dbPath);
   console.log(dbExisted ? '✅ Database already exists, verifying schema...\n' : '📦 Creating advisor database...\n');
 
@@ -153,5 +159,3 @@ if (require.main === module) {
     db.close();
   }
 }
-
-module.exports = { initSchema };

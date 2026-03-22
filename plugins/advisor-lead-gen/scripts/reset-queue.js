@@ -18,14 +18,16 @@
  * Uses node:sqlite (built-in Node 22.5+) — no npm install required.
  */
 
-'use strict';
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const path = require('path');
-const fs = require('fs');
-const { openDb } = require('./db');
-const { initSchema } = require('./db-init');
+import { openDb } from "./db.js";
+import { initSchema } from "./db-init.js";
 
-const DB_PATH = path.join(__dirname, '..', 'advisors.db');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const DB_PATH = path.join(__dirname, "..", "advisors.db");
 
 // Default session directory — prefer OPENCLAW_HOME env, then $HOME, then container default
 const OPENCLAW_BASE = process.env.OPENCLAW_HOME

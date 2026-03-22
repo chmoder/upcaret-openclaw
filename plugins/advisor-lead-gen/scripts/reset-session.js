@@ -27,17 +27,16 @@
  *   ERROR:<message>             — unexpected failure (exits 1)
  */
 
-'use strict';
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-const fs   = require('fs');
-const path = require('path');
-const os   = require('os');
-
-const AGENT_ID      = process.env.ADVISOR_ORCH_AGENT_ID || 'advisor-enrich';
-const SESSION_KEY   = `agent:${AGENT_ID}:main`;
-const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(os.homedir(), '.openclaw');
-const SESSIONS_DIR  = path.join(OPENCLAW_HOME, 'agents', AGENT_ID, 'sessions');
-const SESSIONS_JSON = path.join(SESSIONS_DIR, 'sessions.json');
+const AGENT_ID = process.env.ADVISOR_ORCH_AGENT_ID || "advisor-enrich";
+const SESSION_KEY = `agent:${AGENT_ID}:main`;
+const OPENCLAW_HOME = process.env.OPENCLAW_HOME || path.join(os.homedir(), ".openclaw");
+const SESSIONS_DIR = path.join(OPENCLAW_HOME, "agents", AGENT_ID, "sessions");
+const SESSIONS_JSON = path.join(SESSIONS_DIR, "sessions.json");
 
 /**
  * Reset the agent's main session.
@@ -84,8 +83,12 @@ function resetSession() {
   return { cleared: true, sessionId };
 }
 
-// CLI entry point — only runs when called directly, not when require()'d.
-if (require.main === module) {
+const isMain =
+  Boolean(process.argv[1]) &&
+  pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url;
+
+// CLI entry point — only runs when called directly.
+if (isMain) {
   try {
     const result = resetSession();
     if (result.cleared) {
@@ -99,4 +102,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { resetSession };
+export { resetSession };
