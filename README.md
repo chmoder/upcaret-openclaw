@@ -12,6 +12,12 @@ skills/
 
 Each skill folder is self-contained: `SKILL.md`, `package.json`, `scripts/`, `agents/`, `references/`, etc.
 
+## Drop into any OpenClaw
+
+1. Copy **`skills/advisor-lead-gen/`** *into* **`~/.openclaw/workspace/skills/advisor-lead-gen/`** so the skill files sit at the **root** of that directory (see **`skills/advisor-lead-gen/references/SETUP_WIZARD.md`**).
+2. In OpenClaw chat, say **“set up the lead gen skill”** — the agent follows **`skills/advisor-lead-gen/references/SETUP_WIZARD.md`** (chat-first: agent runs commands via tools when possible; user is not expected to use Terminal first).
+3. If you’re not using chat, on the host: **`cd ~/.openclaw/workspace/skills/advisor-lead-gen`**, **`npm run bootstrap`**, **`npm run setup:openclaw`**.
+
 ## Prerequisites
 
 - **Node.js** 18+ (see each skill’s `package.json` `engines` if stricter)

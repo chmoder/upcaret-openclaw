@@ -1,6 +1,6 @@
 # Main agent routing (intent → orchestrator)
 
-**See also:** [`OPENCLAW_RUNTIME.md`](./OPENCLAW_RUNTIME.md) — persistent orchestrator agent, `sessions_send` / `TICK`, and why subagents don’t replace the orchestrator session.
+**See also:** [`OPENCLAW_RUNTIME.md`](./OPENCLAW_RUNTIME.md) — orchestrator agent, `sessions_send` / `TICK` (manual recovery only), and why subagents don't replace the orchestrator session.
 
 In OpenClaw, the **main agent** is the primary agent you talk to; its direct chat session commonly uses the session key **`main`** (see [Session Tools](https://docs.openclaw.ai/concepts/session-tool)). That **main agent** should route enrichment work to the **orchestrator** session (recommended `advisor-enrich`; some installs use `lead-gen`).
 
@@ -26,30 +26,35 @@ In OpenClaw, the **main agent** is the primary agent you talk to; its direct cha
 
 ## Routing Behavior
 
-1. For enrichment requests, first resolve the orchestrator’s **real `sessionKey`** via `sessions_list` (do not assume the label/id is the sessionKey).
+**Always include `agentId: "advisor-enrich"` in every `sessions_send` to the orchestrator.**
+
+**Use the session key from `sessions_list`.** The default session key is `agent:advisor-enrich:main`. Never hardcode `session:advisor-orchestrator` without first verifying it appears in `sessions_list`. If no session exists, see `SETUP_WIZARD.md` step 3.5. Without it the gateway does not know which agent owns `session:advisor-orchestrator` and may misroute the message or fall back to the default agent.
+
+1. Check `sessions_list` to see if a session for the orchestrator already exists. If nothing shows up, that is fine — `sessions_send` with `agentId` creates the session on first use. Do **not** attempt `sessions_spawn` as a workaround.
 
 2. Send enrichment (fire-and-forget):
-   `sessions_send({ sessionKey: "<orchestratorSessionKey>", message: "ENRICH:{...}", timeoutSeconds: 0 })`
+   ```
+   sessions_send({
+     sessionKey: "<key from sessions_list for agentId advisor-enrich>",
+     agentId: "advisor-enrich",
+     message: "ENRICH:{...advisor json...}",
+     timeoutSeconds: 0
+   })
+   ```
 
-3. Poll by driving the orchestrator state machine with **repeated** `TICK` until you see `DONE:{...}` in `sessions_history`:
-   - every 2–3 seconds: `sessions_send({ sessionKey: "<orchestratorSessionKey>", message: "TICK", timeoutSeconds: 0 })`
-   - then: `sessions_history({ sessionKey: "<orchestratorSessionKey>", limit: 10 })`
-   - stop when the most recent assistant message contains `DONE:`
+3. Poll with **repeated** `TICK` until `DONE:{...}` appears in history:
+   ```
+   sessions_send({ sessionKey: "<key from sessions_list for agentId advisor-enrich>", agentId: "advisor-enrich", message: "TICK", timeoutSeconds: 0 })
+   sessions_history({ sessionKey: "<key from sessions_list for agentId advisor-enrich>", limit: 10 })
+   ```
+   Repeat every 2–3 seconds. Stop when the latest assistant message in history contains `DONE:`.
 
-4. For env/config troubleshooting, route:
-   `sessions_send({ sessionKey: "<orchestratorSessionKey>", message: "ENV", timeoutSeconds: 0 })`
-   (or `"ENV:HELP"` for a full help text)
+4. For env/config troubleshooting:
+   ```
+   sessions_send({ sessionKey: "<key from sessions_list for agentId advisor-enrich>", agentId: "advisor-enrich", message: "ENV", timeoutSeconds: 0 })
+   ```
 
 5. Summarize progress/results to the user in plain language.
-
-## Validation Defaults
-
-- default `state=NE`
-- default `limit=100`
-- validate `state` is 2 uppercase letters
-- validate `limit` is integer 1..1000
-- for advisor lookup require `crd`
-- for export default `min_score=0` and `output=leadgen-<timestamp>.csv`
 
 ## Error Handling
 

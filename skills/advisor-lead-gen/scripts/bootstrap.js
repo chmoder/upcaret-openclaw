@@ -1,46 +1,58 @@
 #!/usr/bin/env node
 /**
  * Idempotent skill bootstrap — safe to run multiple times.
- * - Verifies node + sqlite3 CLI
+ * - Verifies node:sqlite is available (built-in Node 22.5+)
  * - Ensures SQLite schema (db-init.js)
  * - Verifies specialist prompts + core scripts exist
  *
  * Does NOT: create OpenClaw agents, set gateway env, or register sessions.
  */
 
-const fs = require('fs');
-const path = require('path');
-const { spawnSync, execFileSync } = require('child_process');
+const fs = require("fs");
+const path = require("path");
 
-const ROOT = path.join(__dirname, '..');
+const ROOT = path.join(__dirname, "..");
 
 const REQUIRED_PATHS = [
-  'scripts/extract-advisors.js',
-  'scripts/orchestrator.js',
-  'scripts/db-init.js',
-  'scripts/status-dashboard.js',
-  'scripts/env.js',
-  'agents/profile.md',
-  'agents/scorer.md',
-  'agents/orchestrator.md',
+  "scripts/extract-advisors.js",
+  "scripts/orchestrator.js",
+  "scripts/db-init.js",
+  "scripts/status-dashboard.js",
+  "scripts/env.js",
+  "agents/profile.md",
+  "agents/scorer.md",
+  "agents/orchestrator.md",
 ];
 
-function checkBinary(name) {
-  const cmd = process.platform === 'win32' ? 'where' : 'which';
-  const r = spawnSync(cmd, [name], { encoding: 'utf8' });
-  return r.status === 0;
+function checkNodeSqlite() {
+  try {
+    require("node:sqlite");
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function main() {
-  console.log('🔧 advisor-lead-gen bootstrap (idempotent)\n');
+  console.log("🔧 advisor-lead-gen bootstrap (idempotent)\n");
 
   let failed = false;
 
-  if (!checkBinary('sqlite3')) {
-    console.error('❌ sqlite3 CLI not found on PATH (required for db-init and orchestrator).');
+  const nodeVersion = process.versions.node;
+  const [major, minor] = nodeVersion.split(".").map(Number);
+  if (major < 22 || (major === 22 && minor < 5)) {
+    console.error(
+      `❌ Node.js ${nodeVersion} is too old. node:sqlite requires Node 22.5+ (found ${nodeVersion}).`,
+    );
+    console.error("   Upgrade Node.js: https://nodejs.org/en/download");
+    failed = true;
+  } else if (!checkNodeSqlite()) {
+    console.error(
+      `❌ node:sqlite unavailable despite Node ${nodeVersion}. Check your Node build.`,
+    );
     failed = true;
   } else {
-    console.log('OK  sqlite3');
+    console.log(`OK  node:sqlite (Node ${nodeVersion})`);
   }
 
   for (const rel of REQUIRED_PATHS) {
@@ -51,26 +63,37 @@ function main() {
   }
 
   if (failed) {
-    console.error('\nBootstrap stopped (fix errors above).');
+    console.error("\nBootstrap stopped (fix errors above).");
     process.exit(1);
   }
 
-  console.log('\n📦 Running db:init (idempotent)...\n');
+  console.log("\n📦 Running db:init (idempotent)...\n");
   try {
-    execFileSync(process.execPath, [path.join(__dirname, 'db-init.js')], {
-      cwd: ROOT,
-      stdio: 'inherit',
-    });
+    // Call db-init directly (no child process spawn needed)
+    const { initSchema } = require("./db-init");
+    const { openDb } = require("./db");
+    const dbPath = path.join(ROOT, "advisors.db");
+    const db = openDb(dbPath);
+    try {
+      initSchema(db);
+      console.log("✅ Schema ready: advisors.db");
+    } finally {
+      db.close();
+    }
   } catch (e) {
     console.error(`\n❌ db-init failed: ${e.message}`);
     process.exit(1);
   }
 
-  console.log('\n✅ Bootstrap complete. Same command is safe to run again.\n');
-  console.log('Next (OpenClaw):');
-  console.log('  • npm run setup:openclaw   # print openclaw agents/config/sessions_send steps');
-  console.log('  • Enrichment: set BRAVE_API_KEY (see npm run env:help)');
-  console.log('  • Send ENRICH:{...} via sessions_send (see references/OPENCLAW_RUNTIME.md)');
+  console.log("\n✅ Bootstrap complete. Same command is safe to run again.\n");
+  console.log("Next (OpenClaw):");
+  console.log(
+    "  • npm run setup:openclaw   # agents, env, default session:advisor-orchestrator, ENRICH/TICK/STATUS, cron example",
+  );
+  console.log("  • Enrichment: set BRAVE_API_KEY (see npm run env:help)");
+  console.log(
+    "  • npm run cron                # start dispatch-cron.js — required, fires ENRICH to the agent",
+  );
 }
 
 main();

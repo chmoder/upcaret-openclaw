@@ -19,11 +19,18 @@ When your task contains RESEARCH:, parse the advisor JSON after it and find veri
 3. Fetch top 3-5 URLs with web_fetch to confirm relevance
 
 ## Output — reply with ONLY this JSON:
+```json
 {
   "agent": "profile",
   "sec_id": <sec_id>,
-  "urls": [
-    {"url": "https://...", "score": 100, "source": "smartadvisormatch"}
-  ],
-  "pages_fetched": 3
+  "findings": [
+    {"finding_type": "profile_url", "finding_value": "https://smartadvisormatch.com/advisor/...", "source_url": "https://smartadvisormatch.com/advisor/...", "agent_name": "profile", "confidence": "high"},
+    {"finding_type": "profile_summary", "finding_value": "Advisor profiles on smartadvisormatch and retirepath advisors", "source_url": "https://smartadvisormatch.com/advisor/...", "agent_name": "profile", "confidence": "high"}
+  ]
 }
+```
+
+- Use `finding_type: "profile_url"` for each verified profile page URL.
+- Use `finding_type: "profile_summary"` for a one-sentence summary of what was found.
+- `confidence`: `high` = CRD confirmed, `medium` = name+context match, `low` = directory listing.
+- Return an empty `findings: []` if nothing verified was found. Never fabricate data.

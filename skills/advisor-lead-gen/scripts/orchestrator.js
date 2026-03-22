@@ -1,6 +1,22 @@
 #!/usr/bin/env node
 
 /**
+ * DEPRECATED — orchestrator.js is no longer the active implementation.
+ *
+ * The canonical orchestrator is IDENTITY.md (the system prompt for the
+ * `advisor-enrich` agent). That prompt uses dispatch-enrich.js,
+ * record-enrichment.js, and save-enrichment.js for all state writes.
+ *
+ * This file is kept for historical reference only. Running it directly will
+ * not produce correct results because it implements its own competing schema
+ * and state machine that diverges from db-init.js.
+ */
+console.error("ERROR: scripts/orchestrator.js is deprecated. The active orchestrator is IDENTITY.md. Exiting.");
+process.exit(1);
+
+/* ---- original source preserved below for reference ---- */
+
+/**
  * orchestrator.js — Advisor Enrichment Orchestrator (OpenClaw Agent Version)
  * 
  * This runs as a persistent OpenClaw agent session.
@@ -23,7 +39,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execFile } = require('child_process');
+const { openDb, dbRun, dbAll, dbGet } = require('./db');
 const { validateApiKeys, envErrorMessage, envStatus, formatEnvHelp, ENV_SPECS } = require('./env');
 
 // Paths
@@ -371,56 +387,7 @@ function isOpenClawContext() {
 }
 
 function getDB() {
-  return { close: () => {} };
-}
-
-function sqlLiteral(value) {
-  if (value === null || value === undefined) return 'NULL';
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  if (typeof value === 'boolean') return value ? '1' : '0';
-  return `'${String(value).replace(/'/g, "''")}'`;
-}
-
-function bindSql(sql, params = []) {
-  if (!params || params.length === 0) return sql;
-  let i = 0;
-  return sql.replace(/\?/g, () => {
-    const v = params[i++];
-    return sqlLiteral(v);
-  });
-}
-
-function execSql(sql, jsonMode = false) {
-  return new Promise((resolve, reject) => {
-    const args = jsonMode ? ['-json', DB_PATH, sql] : [DB_PATH, sql];
-    execFile('sqlite3', args, { encoding: 'utf8' }, (err, stdout, stderr) => {
-      if (err) reject(err);
-      else if (stderr && stderr.trim()) reject(new Error(stderr.trim()));
-      else resolve(stdout || '');
-    });
-  });
-}
-
-function dbRun(_db, sql, params = []) {
-  return execSql(bindSql(sql, params), false);
-}
-
-function dbAll(db, sql, params = []) {
-  const _dbUnused = db;
-  void _dbUnused;
-  return execSql(bindSql(sql, params), true).then((out) => {
-    const trimmed = out.trim();
-    if (!trimmed) return [];
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return [];
-    }
-  });
-}
-
-function dbGet(db, sql, params = []) {
-  return dbAll(db, sql, params).then((rows) => (rows[0] || null));
+  return openDb(DB_PATH);
 }
 
 function requiredSpecialistFiles() {

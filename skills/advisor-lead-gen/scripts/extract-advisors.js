@@ -12,7 +12,7 @@
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const { execFile, execFileSync } = require('child_process');
+const { openDb, dbRun, dbAll, dbGet: _dbGet } = require('./db');
 
 // Parse command-line arguments
 const args = process.argv.slice(2);
@@ -64,48 +64,19 @@ if (!Number.isInteger(limit) || limit < 1) {
 
 const dbPath = path.join(__dirname, '../advisors.db');
 
-function sqlLiteral(value) {
-  if (value === null || value === undefined) return 'NULL';
-  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
-  if (typeof value === 'boolean') return value ? '1' : '0';
-  return `'${String(value).replace(/'/g, "''")}'`;
+// Open a single DB connection for the lifetime of this process run.
+const _db = openDb(dbPath);
+
+function dbAllLocal(sql, params = []) {
+  return dbAll(_db, sql, params);
 }
 
-function bindSql(sql, params = []) {
-  if (!params || params.length === 0) return sql;
-  let i = 0;
-  return sql.replace(/\?/g, () => sqlLiteral(params[i++]));
+function dbGetLocal(sql, params = []) {
+  return _dbGet(_db, sql, params);
 }
 
-function execSql(sql, jsonMode = false) {
-  return new Promise((resolve, reject) => {
-    const args = jsonMode ? ['-json', dbPath, sql] : [dbPath, sql];
-    execFile('sqlite3', args, { encoding: 'utf8' }, (err, stdout, stderr) => {
-      if (err) reject(err);
-      else if (stderr && stderr.trim()) reject(new Error(stderr.trim()));
-      else resolve(stdout || '');
-    });
-  });
-}
-
-function dbAll(sql, params = []) {
-  return execSql(bindSql(sql, params), true).then((out) => {
-    const trimmed = (out || '').trim();
-    if (!trimmed) return [];
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return [];
-    }
-  });
-}
-
-function dbGet(sql, params = []) {
-  return dbAll(sql, params).then((rows) => rows[0] || null);
-}
-
-function dbRun(sql, params = []) {
-  return execSql(bindSql(sql, params), false);
+function dbRunLocal(sql, params = []) {
+  return dbRun(_db, sql, params);
 }
 
 /**
@@ -136,13 +107,13 @@ function fetchSEC(query) {
 }
 
 async function ensureDbSchema() {
-  // Reuse the idempotent initializer (uses sqlite3 CLI)
-  execFileSync(process.execPath, [path.join(__dirname, 'db-init.js')], { stdio: 'ignore' });
+  const { initSchema } = require('./db-init');
+  initSchema(_db);
 }
 
-async function upsertAdvisorSECFields(advisor) {
+function upsertAdvisorSECFields(advisor) {
   // Upsert SEC-sourced fields only; preserve enrichment fields (email/phone/linkedin/etc.)
-  await dbRun(
+  dbRunLocal(
     `
     INSERT INTO advisors (
       sec_id, first_name, middle_name, last_name, alternate_names,
@@ -249,7 +220,6 @@ function parseAdvisor(doc) {
     console.log(`⏩ Start offset: ${start}`);
     console.log(`📊 Limit: ${limit}\n`);
     
-    // Ensure DB schema exists (sqlite3 CLI; no native sqlite3 module needed)
     console.log(`📦 Ensuring database schema...`);
     await ensureDbSchema();
     
@@ -306,8 +276,8 @@ function parseAdvisor(doc) {
         continue;
       }
       
-      const existing = await dbGet('SELECT sec_id FROM advisors WHERE sec_id = ?', [advisor.sec_id]);
-      await upsertAdvisorSECFields(advisor);
+      const existing = dbGetLocal('SELECT sec_id FROM advisors WHERE sec_id = ?', [advisor.sec_id]);
+      upsertAdvisorSECFields(advisor);
 
       if (existing) {
         updated++;
@@ -329,7 +299,7 @@ function parseAdvisor(doc) {
     
     // Export JSON if requested
     if (output) {
-      const rows = await dbAll('SELECT * FROM advisors ORDER BY updated_at DESC LIMIT ?', [limit]);
+      const rows = dbAllLocal('SELECT * FROM advisors ORDER BY updated_at DESC LIMIT ?', [limit]);
       fs.writeFileSync(output, JSON.stringify(rows, null, 2));
       console.log(`📄 Exported to: ${output}`);
     } else {
@@ -340,5 +310,7 @@ function parseAdvisor(doc) {
     console.error(`❌ Error: ${error.message}`);
     if (debug) console.error(error.stack);
     process.exit(1);
+  } finally {
+    _db.close();
   }
 })();

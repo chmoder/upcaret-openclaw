@@ -4,92 +4,57 @@
  * SEC IAPD Advisor Database Initialization
  * Ensures SQLite database schema for advisors/findings is present.
  * Safe to run repeatedly (idempotent).
+ *
+ * Uses node:sqlite (built-in Node 22.5+) — no sqlite3 CLI required.
  */
 
 const path = require('path');
 const fs = require('fs');
-const { execFileSync } = require('child_process');
+const { openDb, dbRun, dbAll } = require('./db');
 
 const dbPath = path.join(__dirname, '../advisors.db');
-const dbExisted = fs.existsSync(dbPath);
 
-function runSql(sql) {
-  execFileSync('sqlite3', [dbPath, sql], { stdio: 'pipe' });
-}
-
-function queryJson(sql) {
-  const out = execFileSync('sqlite3', ['-json', dbPath, sql], { stdio: 'pipe', encoding: 'utf8' });
-  const trimmed = (out || '').trim();
-  return trimmed ? JSON.parse(trimmed) : [];
-}
-
-function ensureColumn(table, column, definition) {
-  const cols = queryJson(`PRAGMA table_info(${table});`).map((c) => c.name);
+function ensureColumn(db, table, column, definition) {
+  const cols = dbAll(db, `PRAGMA table_info(${table});`).map((c) => c.name);
   if (!cols.includes(column)) {
-    runSql(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
+    dbRun(db, `ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
     console.log(`✅ Column added: ${table}.${column}`);
   }
 }
 
-try {
-  console.log(dbExisted ? '✅ Database already exists, verifying schema...\n' : '📦 Creating advisor database...\n');
-
-  runSql(`
+function initSchema(db) {
+  db.exec(`
     CREATE TABLE IF NOT EXISTS advisors (
-      -- SEC Identification
       sec_id INTEGER PRIMARY KEY,
-      
-      -- Personal Information (from SEC API)
       first_name TEXT NOT NULL,
       middle_name TEXT,
       last_name TEXT NOT NULL,
       alternate_names TEXT,
-      
-      -- Current Employment (from SEC API)
       firm_id INTEGER,
       firm_name TEXT,
       city TEXT,
       state TEXT,
       zip TEXT,
-      
-      -- Registration Status (from SEC API)
       registration_status TEXT,
       investment_advisor_only INTEGER,
       disclosure_flag TEXT,
       finra_registration_count INTEGER,
       employment_count INTEGER,
-      
-      -- SEC Metadata (from SEC API)
       last_updated_iapd TEXT,
       raw_employment_data TEXT,
-      
-      -- Enrichment Fields (from external sources - preserved on updates)
       email TEXT,
       phone TEXT,
       firm_website TEXT,
       linkedin_url TEXT,
       linkedin_handle TEXT,
-      enrichment_notes TEXT,
-      
-      -- Lead Scoring (0-5, assigned by Lead Scorer Agent)
       lead_score INTEGER DEFAULT 0,
       lead_score_reason TEXT,
-      
-      -- Validation & Enrichment Status
       validation_status TEXT DEFAULT 'pending',
-      
-      -- Agent Processing Status (JSON: {"agent_name": timestamp, ...})
-      agents_processed TEXT,
-      
-      -- Timestamps
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      enriched_at DATETIME
-    )
-  `);
-  console.log('✅ Table ensured: advisors');
-  
-  runSql(`
+      enriched_at DATETIME,
+      data_hash TEXT
+    );
     CREATE TABLE IF NOT EXISTS advisor_findings (
       finding_id INTEGER PRIMARY KEY AUTOINCREMENT,
       sec_id INTEGER NOT NULL,
@@ -102,12 +67,9 @@ try {
       confidence TEXT DEFAULT 'medium',
       is_trigger_event INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(sec_id) REFERENCES advisors(sec_id)
-    )
-  `);
-  console.log('✅ Table ensured: advisor_findings');
-
-  runSql(`
+      FOREIGN KEY(sec_id) REFERENCES advisors(sec_id),
+      UNIQUE(sec_id, finding_type, finding_value, agent_name)
+    );
     CREATE TABLE IF NOT EXISTS pending_enrichments (
       sec_id INTEGER NOT NULL,
       specialist TEXT NOT NULL,
@@ -120,24 +82,75 @@ try {
       status TEXT NOT NULL DEFAULT 'PENDING',
       error TEXT,
       PRIMARY KEY (sec_id, specialist)
-    )
+    );
+    CREATE TABLE IF NOT EXISTS enrichment_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sec_id INTEGER NOT NULL,
+      advisor_json TEXT,
+      status TEXT NOT NULL DEFAULT 'queued',
+      queued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      started_at DATETIME,
+      completed_at DATETIME,
+      lead_score INTEGER,
+      data_hash TEXT,
+      error TEXT,
+      FOREIGN KEY(sec_id) REFERENCES advisors(sec_id)
+    );
+    CREATE TABLE IF NOT EXISTS enrichment_errors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sec_id INTEGER,
+      specialist TEXT,
+      error_type TEXT NOT NULL,
+      error_message TEXT,
+      context_json TEXT,
+      logged_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_advisors_enriched_at ON advisors(enriched_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_findings_dedup ON advisor_findings(sec_id, finding_type, finding_value, agent_name);
+    CREATE INDEX IF NOT EXISTS idx_findings_sec_type ON advisor_findings(sec_id, finding_type);
+    CREATE INDEX IF NOT EXISTS idx_pending_enrichments_status ON pending_enrichments(status);
+    CREATE INDEX IF NOT EXISTS idx_pending_enrichments_spawned ON pending_enrichments(spawned_at);
+    CREATE INDEX IF NOT EXISTS idx_enrichment_queue_status ON enrichment_queue(status);
+    CREATE INDEX IF NOT EXISTS idx_enrichment_queue_sec_id ON enrichment_queue(sec_id);
+    CREATE INDEX IF NOT EXISTS idx_enrichment_errors_logged_at ON enrichment_errors(logged_at);
   `);
-  console.log('✅ Table ensured: pending_enrichments');
-
-  runSql(`CREATE INDEX IF NOT EXISTS idx_advisors_enriched_at ON advisors(enriched_at)`);
-  runSql(`CREATE INDEX IF NOT EXISTS idx_findings_sec_type ON advisor_findings(sec_id, finding_type)`);
-  runSql(`CREATE INDEX IF NOT EXISTS idx_pending_enrichments_status ON pending_enrichments(status)`);
-  runSql(`CREATE INDEX IF NOT EXISTS idx_pending_enrichments_spawned ON pending_enrichments(spawned_at)`);
-  runSql(`PRAGMA foreign_keys = ON`);
 
   // Migrations for older local DBs.
-  ensureColumn('advisor_findings', 'agent_name', 'TEXT');
-  ensureColumn('advisor_findings', 'is_trigger_event', 'INTEGER DEFAULT 0');
-  ensureColumn('advisors', 'created_at', 'DATETIME');
+  ensureColumn(db, 'advisor_findings', 'agent_name', 'TEXT');
+  ensureColumn(db, 'advisor_findings', 'is_trigger_event', 'INTEGER DEFAULT 0');
+  ensureColumn(db, 'advisors', 'created_at', 'DATETIME');
+  ensureColumn(db, 'advisors', 'data_hash', 'TEXT');
+  ensureColumn(db, 'enrichment_queue', 'data_hash', 'TEXT');
 
-  console.log('\n✅ Database schema ready at: ' + dbPath);
-  console.log('   Use extract-advisors.js to sync SEC data');
-} catch (err) {
-  console.error(`❌ Database initialization failed: ${err.message}`);
-  process.exit(1);
+  // Drop redundant columns removed in v3.2 (SQLite >=3.35 supports DROP COLUMN).
+  // Safe to call repeatedly — ignores errors if columns don't exist.
+  for (const col of ['enrichment_notes', 'agents_processed']) {
+    try {
+      db.exec(`ALTER TABLE advisors DROP COLUMN ${col}`);
+    } catch (_) { /* column already gone or SQLite version too old — ignore */ }
+  }
 }
+
+if (require.main === module) {
+  const dbExisted = fs.existsSync(dbPath);
+  console.log(dbExisted ? '✅ Database already exists, verifying schema...\n' : '📦 Creating advisor database...\n');
+
+  const db = openDb(dbPath);
+  try {
+    initSchema(db);
+    console.log('✅ Table ensured: advisors');
+    console.log('✅ Table ensured: advisor_findings');
+    console.log('✅ Table ensured: pending_enrichments');
+    console.log('✅ Table ensured: enrichment_queue');
+    console.log('✅ Table ensured: enrichment_errors');
+    console.log('\n✅ Database schema ready at: ' + dbPath);
+    console.log('   Use extract-advisors.js to sync SEC data');
+  } catch (err) {
+    console.error(`❌ Database initialization failed: ${err.message}`);
+    process.exit(1);
+  } finally {
+    db.close();
+  }
+}
+
+module.exports = { initSchema };

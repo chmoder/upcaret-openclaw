@@ -1,6 +1,7 @@
 ---
 name: sec-iapd-advisor-enrichment
-description: Extract advisors from the SEC IAPD database, then enrich them via a persistent OpenClaw orchestrator. Enrichment requires BRAVE_API_KEY; SEC download-only does not.
+description: >
+  Lead gen and advisor enrichment for financial advisors via the SEC IAPD database. Use when the user says "set up the lead gen skill", "install the lead gen skill", "configure advisor enrichment", "set up advisor lead gen", "onboard the advisor skill", "enrich advisors", or asks to pull/enrich SEC IAPD advisors. Handles SEC download, multi-agent enrichment (requires BRAVE_API_KEY), scoring, and export. Install location: ~/.openclaw/workspace/skills/advisor-lead-gen/ — this directory is also the orchestrator workspace (no second copy needed).
 ---
 
 # SEC IAPD Advisor Enrichment Skill v3.1
@@ -16,37 +17,28 @@ This skill has two modes:
 
 Models operating this skill should follow `references/ASSISTANT_GUIDE.md`.
 
-The short version:
+**Install:** copy the skill to `~/.openclaw/workspace/skills/advisor-lead-gen/` then say **"set up the lead gen skill"** in chat. The main agent reads this file from there and follows **`references/SETUP_WIZARD.md`** — bootstrap, register `advisor-enrich` (workspace = this directory, no second copy), collect `BRAVE_API_KEY`, verify. Full packaging checklist: **`references/DISTRIBUTION.md`**. Default model: **`anthropic/claude-haiku-4-5`** (see **`references/MODEL_DEFAULTS.md`**).
 
-1. Try Session Tools first: `sessions_list`, then `sessions_send` with `ENRICH`, `TICK`, or `ENV`.
-2. If no working orchestrator session exists, give the user the exact operator steps from `npm run setup:openclaw` and `references/INSTALL_AUTOMATION.md`.
-3. Never imply enrichment succeeded unless the orchestrator completed a real round-trip.
+Day-to-day:
+
+- **Setup trigger** ("set up the lead gen skill", "install", "onboard"): read `references/ASSISTANT_GUIDE.md` §0 and **execute immediately** — bootstrap, register agent, ask for key. Do not present options.
+- **Enrichment / status**: follow `references/ASSISTANT_GUIDE.md` §1 decision tree exactly. Short form: (1) `sessions_list` → if `advisor-enrich` session found, use `sessions_send ENRICH` + repeated `TICK` until `DONE:`; (2) if no session or sessions_send fails, run `openclaw agent --agent advisor-enrich --message 'ENRICH:{...}' --timeout 120` via exec, then loop `openclaw agent --agent advisor-enrich --message TICK --timeout 60` every 5–10 seconds until `DONE:{...}` appears — the first ENRICH call only spawns specialists and yields, it does NOT return results directly. Never use `sessions_spawn` (ACP errors from it are noise — exec still works). Never mention ACP, Discord, or Slack as requirements.
+- **Never** imply enrichment succeeded without a real `DONE:` from the orchestrator.
+- **Never fabricate data, install packages, create files, or workaround failures silently** — see `references/ASSISTANT_GUIDE.md` Hard rules.
 
 ## First-Time Setup
 
-1. Put this skill on the target machine or in the target agent workspace.
-2. Run `npm run bootstrap` in this directory.
-3. Run `npm run setup:openclaw` to print the exact `openclaw` commands needed on the gateway host.
-4. Run those printed commands to create the persistent orchestrator agent, copy this skill into its workspace if needed, and set `env.BRAVE_API_KEY`.
+1. Place this skill at **`~/.openclaw/workspace/skills/advisor-lead-gen/`** (`package.json` at the root). See **`references/SETUP_WIZARD.md`**.
+2. Run **`npm run bootstrap`** in that directory.
+3. Run **`npm run setup:openclaw`** — read the printed `openclaw agents add advisor-enrich --workspace <this-dir>` command and run it.
+4. Set `env.BRAVE_API_KEY` via the printed `openclaw config set` command. Optionally: `npm run setup:openclaw -- --apply-env` if the key is already exported.
 5. Optionally run `npm run extract` to preload SEC advisor rows into `advisors.db`.
-
-What this skill can do by itself:
-
-- Validate local prerequisites.
-- Initialize or upgrade the SQLite schema.
-- Print the exact OpenClaw setup commands.
-- Optionally apply `env.BRAVE_API_KEY` if you run `npm run setup:openclaw -- --apply-env` with the key already exported.
-
-What it cannot do by itself:
-
-- Register agents on the gateway unless the OpenClaw CLI and permissions are available there.
-- Pretend a persistent orchestrator exists when none does.
 
 For the full operator boundary, read `references/INSTALL_AUTOMATION.md`.
 
 ## Runtime Contract
 
-Enrichment requires a **persistent OpenClaw agent session** with Session Tools such as `sessions_spawn`, `sessions_yield`, and `sessions_history`. One-off shells or ordinary subagents are not a substitute. See `references/OPENCLAW_RUNTIME.md` for the send/poll lifecycle and `timeoutSeconds: 0` guidance.
+Enrichment requires a **persistent OpenClaw agent session** with Session Tools such as `sessions_spawn`, `sessions_yield`, and `sessions_history`. One-off shells or ordinary subagents are not a substitute. For **cron**-driven runs, set **`agentId`** on each job to the orchestrator agent (see `references/OPENCLAW_RUNTIME.md` §3 and `npm run setup:openclaw`). The same doc covers the send/poll lifecycle and `timeoutSeconds: 0` guidance.
 
 The orchestrator is a backend capability. End users should normally interact through a main agent or app flow, not by hand-crafting `sessions_send` calls.
 
@@ -75,12 +67,14 @@ It does **not** implement export workflows, retry queues, or arbitrary slash com
 
 ```javascript
 sessions_send({
-  sessionKey: "lead-gen",
-  message:
-    'ENRICH:{"sec_id":4167394,"first_name":"Chris","last_name":"Leaver","firm_name":"THRIVENT ADVISOR NETWORK, LLC","city":"Fremont","state":"NE","crd":"4167394"}',
+  sessionKey: "session:advisor-orchestrator",
+  agentId: "advisor-enrich",
+  message: 'ENRICH:{"sec_id":4167394,"first_name":"Chris","last_name":"Leaver","firm_name":"THRIVENT ADVISOR NETWORK, LLC","city":"Fremont","state":"NE","crd":"4167394"}',
   timeoutSeconds: 0,
 });
 ```
+
+**`agentId: "advisor-enrich"` is required.** Without it the gateway does not know which agent owns `session:advisor-orchestrator` and may misroute. If the session does not exist yet, `sessions_send` with `agentId` creates it — do not use `sessions_spawn` as a substitute.
 
 `ENRICH:{...}` starts the run, but completion is multi-turn. If `DONE:{...}` does not appear quickly, the caller must keep sending `TICK` and checking session history until the run completes. Do not assume a single blocking request will carry the full workflow.
 

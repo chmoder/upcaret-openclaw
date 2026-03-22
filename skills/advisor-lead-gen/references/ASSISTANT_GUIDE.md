@@ -4,33 +4,128 @@ This skill is used from **chat**. The model (main agent) should **try OpenClaw f
 
 ---
 
-## 1. When the user asks for enrichment (or SEC + enrich)
+## Hard rules — never break these
 
-### A. Use OpenClaw Session Tools if available
-
-1. **`sessions_list`** — Find a session for the enrichment orchestrator (names vary: `lead-gen`, `advisor-enrich`, or entries tied to the orchestrator agent).  
-   - **If no plausible orchestrator session:** do **not** claim enrichment ran. Say the orchestrator isn’t available and give **user-facing** steps (section 3 below).
-
-2. **`sessions_send`** to that orchestrator’s **`sessionKey`**:
-   - `message: "ENV"` or `"/leadgen env"` if the user needs config status (orchestrator returns `DONE` with env payload).
-   - `message: 'ENRICH:{...}'` with advisor JSON from `advisors` / user, **`timeoutSeconds: 0`**.
-   - If you don’t see `DONE:` shortly after, **drive the state machine**:
-     - loop every 2–3 seconds: **`sessions_send`** `message: "TICK"` with **`timeoutSeconds: 0`**
-     - after each TICK: check **`sessions_history`** on the orchestrator session for a `DONE:{...}` response
-     - stop when you see `DONE:` or after a reasonable timeout; report clearly if it times out
-
-3. If **`sessions_send`** errors (session not found, denied, etc.): go to **section 3**.
-
-### B. Do not pretend subagents replace the orchestrator
-
-Do **not** spawn a generic subagent to `node scripts/orchestrator.js` and expect full enrichment — the orchestrator **must** run in a session that has **`sessions_spawn` / `sessions_yield` / `sessions_history`**. If you tried that and it failed, say so and point to the orchestrator session setup (section 3).
+- **Do not fabricate data.** If `npm run extract` fails or the SEC API is unreachable, stop and report the error. Never generate synthetic/mock advisor rows and present them as real data. An enrichment is only complete when `enriched_at` is NOT null in the DB — not when the orchestrator says something that looks like a result.
+- **Do not create new files.** The skill's file list is canonical (see `ARCHITECTURE.md`). Do not write new scripts, workarounds, or agent definition files.
+- **Do not write into `~/.openclaw/agents/`.** Never create or modify files in any agent directory (prompts, auth configs, session files). If the orchestrator lacks a system prompt, that is a setup problem — report it and point to `SETUP_WIZARD.md`.
+- **Do not install npm packages.** `package.json` has no runtime `dependencies` by design. Never `npm install` anything.
+- **Do not initialize a git repo** or create `.git/` in the skill directory.
+- **Do not create markdown files.** Point the user to existing docs instead.
+- **Report failures honestly.** If exec is unavailable, the CLI is missing, or the SEC API is unreachable, say so and give the user exact steps to resolve it. Never silently work around a failure.
+- **Never tell the user to configure ACP, Discord, or Slack to enable enrichment.** Errors from `sessions_spawn` (including "ACP not configured") mean that approach is wrong — not that enrichment is impossible. The exec path (`openclaw agent --agent advisor-enrich`) works without ACP and without persistent channels. Use it.
 
 ---
+
+## 0. When the user asks to set up / install / configure the lead gen skill
+
+Triggers include: **set up the lead gen skill**, **install advisor-lead-gen**, **configure SEC advisor enrichment**, **onboard this skill**.
+
+**Do not ask "which option?" or present a menu. Execute immediately.**
+
+Say something like: "Found the skill — running bootstrap and setup now." Then proceed through steps 1–4 below without waiting for the user to choose.
+
+**One install location:** `~/.openclaw/workspace/skills/advisor-lead-gen/` (container: `/home/node/.openclaw/workspace/skills/advisor-lead-gen/`). The `advisor-enrich` agent's `--workspace` points here. No separate directory needed.
+
+1. Run `npm run bootstrap` via **exec** (cwd = skill dir). Report pass/fail.
+2. Run `npm run setup:openclaw` via **exec**; read the output and execute the printed `openclaw agents add advisor-enrich --workspace <dir> --model anthropic/claude-haiku-4-5` command.
+3. **Start the orchestrator session** — run `openclaw agent --agent advisor-enrich --message STATUS --timeout 60` via exec. This creates the advisor-enrich agent session. If exec is unavailable, tell the user to open a chat with the advisor-enrich agent and send `STATUS`. This step is required before any webchat enrichment will work.
+4. Ask the user for **`BRAVE_API_KEY`** in chat (one question, not a list of options).
+5. Apply `openclaw config set env.BRAVE_API_KEY "<key>"`; verify with `sessions_list` → confirm session present → `sessions_send ENV` (with `agentId: "advisor-enrich"`).
+
+If exec is unavailable, skip to **`SETUP_WIZARD.md`** Fallback block and give the user exact copy-paste commands — still no menu.
+
+---
+
+## 1. When the user asks for enrichment (or SEC + enrich)
+
+**Do not attempt `sessions_spawn` in any form.** Both `thread=true` and one-shot fail in this environment ("ACP not configured", webchat rejected, etc.). That error does not mean enrichment is impossible — it means `sessions_spawn` is the wrong tool. Ignore it and proceed as below.
+
+**Do not mention ACP, Discord, or Slack as requirements.** They are not needed.
+
+### Decision tree — follow in order, stop at first success
+
+**Step 1 — Check for existing session**
+
+```
+sessions_list()
+```
+
+Look for a session with `agentId: "advisor-enrich"` (key is typically `agent:advisor-enrich:main`).
+
+**If session found → Step 2 (sessions_send)**
+**If no session found → run `openclaw agent --agent advisor-enrich --message STATUS --timeout 30` via exec to create it, then go to Step 2. The session key is `agent:advisor-enrich:main`. Do not attempt sessions_spawn.**
+
+---
+
+**Step 2 — Queue the advisor**
+
+Your only job is to write the queue row. The dispatch cron (`dispatch-cron.js`) handles everything else — it polls the queue, resets the session, and fires ENRICH automatically.
+
+```bash
+node /home/node/.openclaw/workspace/skills/advisor-lead-gen/scripts/enqueue-enrich.js --sec-id <SEC_ID>
+# → QUEUED:<sec_id>
+```
+
+The cron picks it up within 5 seconds and fires the ENRICH. Results appear in ~3–5 minutes.
+
+Immediately tell the user: "Queued [Name] for enrichment. The dispatch cron will pick it up within seconds — results appear in ~3–5 minutes. Check status with `npm run status`."
+
+**To queue multiple advisors**, call `enqueue-enrich.js` once per advisor — the cron processes them one at a time:
+
+```bash
+node scripts/enqueue-enrich.js --sec-id <ID1>
+node scripts/enqueue-enrich.js --sec-id <ID2>
+node scripts/enqueue-enrich.js --sec-id <ID3>
+```
+
+---
+
+**Step 3 — exec fallback (dispatch cron not running)**
+
+If `dispatch-cron.js` is not running, queue the advisor and fire manually:
+
+```bash
+node /home/node/.openclaw/workspace/skills/advisor-lead-gen/scripts/enqueue-enrich.js --sec-id <SEC_ID>
+```
+
+```bash
+openclaw agent \
+  --agent advisor-enrich \
+  --message 'ENRICH:<json from dispatch output>' \
+  --timeout 30
+```
+
+The orchestrator will reply that it has started. That is sufficient — do not wait for DONE. Tell the user to check the DB in ~5 minutes.
+
+**To check DB status anytime:**
+
+```
+node -e "const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('/home/node/.openclaw/workspace/skills/advisor-lead-gen/advisors.db');console.log(JSON.stringify(db.prepare('SELECT sec_id,name,lead_score,enriched_at FROM advisors WHERE enriched_at IS NOT NULL ORDER BY enriched_at DESC LIMIT 10').all()))"
+```
+
+**Step 4 — if exec is also unavailable**
+
+Tell the user (one short numbered list, no menus):
+
+1. Start the dispatch cron: `node scripts/dispatch-cron.js` (it picks up queued rows automatically)
+2. Or manually: `openclaw agent --agent advisor-enrich --message 'ENRICH:{...}' --timeout 30`
+3. Check the DB in ~5 minutes.
+
+Do not tell the user to configure ACP, Discord, or Slack.
+
+### D. Cron jobs must pin the orchestrator agent
+
+## If the user uses **OpenClaw cron**, each job must set **`agentId: "advisor-enrich"`**. Without it, the gateway runs the job as the default agent — wrong workspace. See `npm run setup:openclaw` output for the correct JSON shape.
 
 ## 2. When the user asks for SEC download only
 
 - If you have a **terminal/exec** tool whose cwd can be the skill workspace: you may run `npm run extract -- --state … --limit …` (no API keys required).
-- If you **don’t** have shell access: **tell the user** an operator must run `npm run extract` (or `node scripts/extract-advisors.js`) where `advisors.db` lives, or grant you exec in that workspace.
+- If you **don't** have shell access: **tell the user** an operator must run `npm run extract` (or `node scripts/extract-advisors.js`) where `advisors.db` lives, or grant you exec in that workspace.
+
+### No npm install is needed — ever
+
+This skill has **no runtime npm dependencies**. All database operations use the **`node:sqlite`** module built into Node 22.5+. Do **not** run `npm install` for any reason. If you see “Cannot find module 'better-sqlite3'” or “Cannot find module 'sqlite3'”, those are the wrong modules — never install them. If a script fails to load its DB module, run `node scripts/bootstrap.js` to verify the environment (`node --version` must be ≥ 22.5).
 
 ---
 

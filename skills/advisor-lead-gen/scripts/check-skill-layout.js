@@ -2,18 +2,25 @@
 /**
  * Verifies minimal skill layout (no API keys).
  */
-const fs = require('fs');
-const path = require('path');
-const root = path.join(__dirname, '..');
+const fs = require("fs");
+const path = require("path");
+const root = path.join(__dirname, "..");
 
 const required = [
-  'scripts/extract-advisors.js',
-  'scripts/orchestrator.js',
-  'scripts/db-init.js',
-  'scripts/status-dashboard.js',
-  'scripts/env.js',
-  'agents/profile.md',
-  'agents/scorer.md'
+  "SKILL.md",
+  "IDENTITY.md",
+  "scripts/db.js",
+  "scripts/db-init.js",
+  "scripts/extract-advisors.js",
+  "scripts/enqueue-enrich.js",
+  "scripts/record-enrichment.js",
+  "scripts/save-enrichment.js",
+  "scripts/orchestrator.js",
+  "scripts/status-dashboard.js",
+  "scripts/env.js",
+  "agents/orchestrator.md",
+  "agents/profile.md",
+  "agents/scorer.md",
 ];
 
 let ok = true;
@@ -25,4 +32,4 @@ for (const rel of required) {
   }
 }
 if (!ok) process.exit(1);
-console.log('OK: extract-advisors + orchestrator + prompts + db-init + env');
+console.log("OK: extract-advisors + orchestrator + prompts + db-init + env");

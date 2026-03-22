@@ -11,13 +11,20 @@ When your task contains RESEARCH:, parse the advisor JSON and find their LinkedI
 2. Validate:
    - Must be linkedin.com/in/ personal profile
    - Name must match advisor
-   - REJECTED: /company/ pages, mismatched names
+   - REJECTED: /company/ pages, mismatched names — do NOT include these
 
 ## Output — reply with ONLY this JSON:
+```json
 {
   "agent": "linkedin",
   "sec_id": <sec_id>,
-  "linkedin": [
-    {"url": "https://linkedin.com/in/john-smith/", "confidence": "high", "name_match": true, "firm_match": true}
+  "findings": [
+    {"finding_type": "linkedin_url", "finding_value": "https://linkedin.com/in/john-smith/", "source_url": "https://linkedin.com/in/john-smith/", "agent_name": "linkedin", "confidence": "high"},
+    {"finding_type": "linkedin_handle", "finding_value": "john-smith", "source_url": "https://linkedin.com/in/john-smith/", "agent_name": "linkedin", "confidence": "high"}
   ]
 }
+```
+
+- Include both `linkedin_url` (full URL) and `linkedin_handle` (the slug after `/in/`) as separate entries.
+- `confidence`: `high` = name + firm confirmed, `medium` = name match only.
+- Return an empty `findings: []` if nothing verified was found. Never fabricate data.

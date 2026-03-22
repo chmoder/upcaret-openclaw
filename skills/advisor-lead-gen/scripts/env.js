@@ -52,6 +52,29 @@ const ENV_SPECS = [
     kind: 'debug',
     description: 'Optional. Set to 1 for verbose profile discovery logs.',
     howToSet: ['export DEBUG_DISCOVERY=1']
+  },
+  {
+    name: 'ADVISOR_ORCH_SESSION_KEY',
+    required: false,
+    kind: 'setup',
+    description:
+      'Optional. Only for `npm run setup:openclaw` output: default orchestrator sessionKey in printed examples (default session:advisor-orchestrator). Gateway must still bind this session to the orchestrator agent.',
+    howToSet: ['export ADVISOR_ORCH_SESSION_KEY="session:advisor-orchestrator"']
+  },
+  {
+    name: 'ADVISOR_ORCH_AGENT_ID',
+    required: false,
+    kind: 'setup',
+    description: 'Optional. Agent id used in printed `openclaw agents add` line (default advisor-enrich).',
+    howToSet: ['export ADVISOR_ORCH_AGENT_ID="advisor-enrich"']
+  },
+  {
+    name: 'ADVISOR_ORCH_WORKSPACE',
+    required: false,
+    kind: 'setup',
+    description:
+      'Optional. Skill workspace path (default ~/.openclaw/workspace/skills/advisor-lead-gen); skill root must equal this path. See references/SETUP_WIZARD.md.',
+    howToSet: ['export ADVISOR_ORCH_WORKSPACE="$HOME/.openclaw/workspace/skills/advisor-lead-gen"']
   }
 ];
 
