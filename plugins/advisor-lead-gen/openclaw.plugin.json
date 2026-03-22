@@ -1,0 +1,12 @@
+{
+  "id": "advisor-lead-gen",
+  "name": "SEC IAPD Advisor Lead Gen",
+  "description": "Advisor enrichment via SEC IAPD. Manages dispatch cron on gateway startup.",
+  "version": "3.1.0",
+  "skills": ["."],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

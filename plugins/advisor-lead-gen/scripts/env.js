@@ -73,7 +73,7 @@ const ENV_SPECS = [
     required: false,
     kind: 'setup',
     description:
-      'Optional. Skill workspace path (default ~/.openclaw/workspace/skills/advisor-lead-gen); skill root must equal this path. See references/SETUP_WIZARD.md.',
+      'Optional. Skill workspace path (default ~/.openclaw/extensions/advisor-lead-gen); skill root must equal this path. See references/SETUP_WIZARD.md.',
     howToSet: ['export ADVISOR_ORCH_WORKSPACE="$HOME/.openclaw/workspace/skills/advisor-lead-gen"']
   }
 ];

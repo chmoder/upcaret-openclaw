@@ -32,11 +32,11 @@ export OPENCLAW_IMAGE="ghcr.io/openclaw/openclaw:latest"
 - Control UI / chat: `http://127.0.0.1:18789/` — **WebSocket** `ws://127.0.0.1:18789`, **Gateway Token** = value of `OPENCLAW_GATEWAY_TOKEN` in **`~/development/openclaw/.env`** (must match what Docker passes to the container; if you re-ran setup, sync `~/.openclaw/openclaw.json` `gateway.auth.token` to that same value).
 - Health: `curl -fsS http://127.0.0.1:18789/healthz` → **200**
 
-### Continue: test advisor-lead-gen
+### Continue: test advisor-lead-gen (plugin)
 
-1. **Rsync the skill contents** into **`~/.openclaw/workspace/skills/advisor-lead-gen/`** (so **`package.json`** is at that folder’s root; see **`skills/advisor-lead-gen/references/SETUP_WIZARD.md`**), then **`cd` there and `npm run bootstrap`**.
-2. Merge or add the **`advisor-enrich`** agent from **`npm run setup:openclaw`** output into **`~/.openclaw/openclaw.json`** (or use Control UI if your version supports it), pointing **`workspace`** at **`…/workspace/skills/advisor-lead-gen`**.
-3. Enrichment: **`sessions_send`** / cron with **`agentId: "advisor-enrich"`** and **`sessionTarget`**, messages **`ENRICH` + `TICK`** — see **`skills/advisor-lead-gen/references/OPENCLAW_RUNTIME.md`**.
+1. **Install the plugin** from this repo: `openclaw plugins install -l /path/to/upcaret-openclaw/plugins/advisor-lead-gen`, then `openclaw plugins enable advisor-lead-gen`, set **`BRAVE_API_KEY`**, add **`advisor-enrich`** with **`--workspace ~/.openclaw/extensions/advisor-lead-gen`**, **`openclaw gateway restart`**. See **`plugins/advisor-lead-gen/references/SETUP_WIZARD.md`**.
+2. The plugin’s **`gateway:startup`** hook starts PM2 / **`advisor-cron`** automatically after restart (requires global **`pm2`** on PATH).
+3. Enrichment: **`sessions_send`** / cron with **`agentId: "advisor-enrich"`** and **`sessionTarget`**, messages **`ENRICH` + `TICK`** — see **`plugins/advisor-lead-gen/references/OPENCLAW_RUNTIME.md`**.
 
 Docker bind-mounts are described in the [OpenClaw Docker doc](https://docs.openclaw.ai/install/docker); config on disk is under **`~/.openclaw`**.
 

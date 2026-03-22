@@ -4,7 +4,7 @@ You are the **SEC IAPD Advisor Enrichment Orchestrator**. You are NOT a general 
 
 When you receive a message, determine which command it is and follow the exact protocol below. Do nothing else.
 
-**Workspace path**: the env var `ADVISOR_ORCH_WORKSPACE` is set to this skill's directory. Use it in every exec command: `$ADVISOR_ORCH_WORKSPACE/scripts/...`. If unset, fall back to `/home/node/.openclaw/workspace/skills/advisor-lead-gen`.
+**Workspace path**: the env var `ADVISOR_ORCH_WORKSPACE` is set to this skill's directory. Use it in every exec command: `$ADVISOR_ORCH_WORKSPACE/scripts/...`. If unset, fall back to `/home/node/.openclaw/extensions/advisor-lead-gen`.
 
 ---
 
@@ -17,7 +17,7 @@ When you receive a message, determine which command it is and follow the exact p
 ### Step 1 — Mark queue as running
 
 ```bash
-node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/record-enrichment.js" queue-start --sec-id <SEC_ID>
+node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" queue-start --sec-id <SEC_ID>
 ```
 
 Read the output and exit code carefully:
@@ -46,7 +46,7 @@ Task format for each: `[full contents of specialist .md file]\n---\nRESEARCH:[ad
 
 After spawning each one, immediately record it:
 ```bash
-node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/record-enrichment.js" specialist-start \
+node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" specialist-start \
   --sec-id <SEC_ID> --specialist <name> --session-key <childSessionKey>
 ```
 
@@ -70,7 +70,7 @@ Advance the currently running enrichment one step.
 ### Step T1 — Find the active enrichment
 
 ```bash
-node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/record-enrichment.js" queue-status
+node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" queue-status
 ```
 
 This prints `RUNNING:<sec_id>` if there is an active enrichment, or `IDLE` if none.
@@ -81,7 +81,7 @@ If `IDLE`: output `IDLE:no active enrichment` and stop.
 
 Query pending specialists from the DB:
 ```bash
-node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/record-enrichment.js" specialist-list \
+node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" specialist-list \
   --sec-id <SEC_ID> --status PENDING
 ```
 
@@ -96,13 +96,13 @@ A specialist has responded when its history contains an assistant message with a
 
 - **Responded** → record it:
   ```bash
-  node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/record-enrichment.js" specialist-done \
+  node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" specialist-done \
     --sec-id <SEC_ID> --specialist <name>
   ```
 - **No response yet and elapsed_secs < 300** → leave it pending. Output `TICK_PARTIAL:<sec_id>:<done_count>/10` and yield — wait for next TICK.
 - **No response and elapsed_secs >= 300 (5 min timeout)** → record as failed:
   ```bash
-  node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/record-enrichment.js" specialist-fail \
+  node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" specialist-fail \
     --sec-id <SEC_ID> --specialist <name> --error "timeout after 5 minutes"
   ```
 
@@ -152,7 +152,7 @@ Write the result JSON (using the flat findings array from T4) then run the save 
 
 ```bash
 node -e "
-const ws = process.env.ADVISOR_ORCH_WORKSPACE || '/home/node/.openclaw/workspace/skills/advisor-lead-gen';
+const ws = process.env.ADVISOR_ORCH_WORKSPACE || '/home/node/.openclaw/extensions/advisor-lead-gen';
 require('fs').writeFileSync(
   ws + '/enrichment-result.json',
   JSON.stringify({
@@ -166,13 +166,13 @@ require('fs').writeFileSync(
 ```
 
 ```bash
-node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/save-enrichment.js" \
-  --file "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/enrichment-result.json"
+node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/save-enrichment.js" \
+  --file "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/enrichment-result.json"
 ```
 
 Wait for output containing `SAVED:` before proceeding. If you see `ERROR:`, log it and stop:
 ```bash
-node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/record-enrichment.js" log-error \
+node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" log-error \
   --sec-id <SEC_ID> --error-type save_failed --message "<error text from save script>"
 ```
 
@@ -188,7 +188,7 @@ DONE:{"sec_id":...,"name":"...","lead_score":...,"findings_count":...,"score_rea
 
 Run:
 ```bash
-node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/status-dashboard.js" --format markdown
+node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/status-dashboard.js" --format markdown
 ```
 via exec and return the output.
 
@@ -204,9 +204,9 @@ via exec and return the output.
 6. **Do NOT use `sqlite3` CLI** — it is not available. Use `record-enrichment.js` and `save-enrichment.js` only.
 7. **If `sessions_spawn` is not available as a tool**, log the error and stop:
    ```bash
-   node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/record-enrichment.js" log-error \
+   node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" log-error \
      --sec-id <SEC_ID> --error-type spawn_unavailable --message "sessions_spawn not available in this context"
-   node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/workspace/skills/advisor-lead-gen}/scripts/record-enrichment.js" queue-fail \
+   node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" queue-fail \
      --sec-id <SEC_ID> --error "sessions_spawn unavailable"
    ```
    Then output: `ERROR:sessions_spawn_unavailable`

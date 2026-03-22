@@ -1,7 +1,7 @@
 ---
 name: sec-iapd-advisor-enrichment
 description: >
-  Lead gen and advisor enrichment for financial advisors via the SEC IAPD database. Use when the user says "set up the lead gen skill", "install the lead gen skill", "configure advisor enrichment", "set up advisor lead gen", "onboard the advisor skill", "enrich advisors", or asks to pull/enrich SEC IAPD advisors. Handles SEC download, multi-agent enrichment (requires BRAVE_API_KEY), scoring, and export. Install location: ~/.openclaw/workspace/skills/advisor-lead-gen/ — this directory is also the orchestrator workspace (no second copy needed).
+  Lead gen and advisor enrichment for financial advisors via the SEC IAPD database. Use when the user says "set up the lead gen skill", "install the lead gen skill", "configure advisor enrichment", "set up advisor lead gen", "onboard the advisor skill", "enrich advisors", or asks to pull/enrich SEC IAPD advisors. Handles SEC download, multi-agent enrichment (requires BRAVE_API_KEY), scoring, and export. Install: openclaw plugins install advisor-lead-gen — the plugin directory (~/.openclaw/extensions/advisor-lead-gen/) is also the orchestrator workspace.
 ---
 
 # SEC IAPD Advisor Enrichment Skill v3.1
@@ -17,7 +17,7 @@ This skill has two modes:
 
 Models operating this skill should follow `references/ASSISTANT_GUIDE.md`.
 
-**Install:** copy the skill to `~/.openclaw/workspace/skills/advisor-lead-gen/` then say **"set up the lead gen skill"** in chat. The main agent reads this file from there and follows **`references/SETUP_WIZARD.md`** — bootstrap, register `advisor-enrich` (workspace = this directory, no second copy), collect `BRAVE_API_KEY`, verify. Full packaging checklist: **`references/DISTRIBUTION.md`**. Default model: **`anthropic/claude-haiku-4-5`** (see **`references/MODEL_DEFAULTS.md`**).
+**Install:** `openclaw plugins install advisor-lead-gen` (or say **"set up the lead gen skill"** in chat). The plugin registers `SKILL.md` automatically — no copy to `workspace/skills/` needed. The main agent follows **`references/SETUP_WIZARD.md`** — register `advisor-enrich` (workspace = `~/.openclaw/extensions/advisor-lead-gen/`), collect `BRAVE_API_KEY`, restart gateway. PM2 cron starts automatically on every boot after that. Full packaging checklist: **`references/DISTRIBUTION.md`**. Default model: **`anthropic/claude-haiku-4-5`** (see **`references/MODEL_DEFAULTS.md`**).
 
 Day-to-day:
 
@@ -28,12 +28,14 @@ Day-to-day:
 
 ## First-Time Setup
 
-1. Place this skill at **`~/.openclaw/workspace/skills/advisor-lead-gen/`** (`package.json` at the root). See **`references/SETUP_WIZARD.md`**.
-2. Run **`npm run bootstrap`** in that directory.
-3. Run **`npm run setup:openclaw`** — read the printed `openclaw agents add advisor-enrich --workspace <this-dir>` command and run it.
-4. Set `env.BRAVE_API_KEY` via the printed `openclaw config set` command. Optionally: `npm run setup:openclaw -- --apply-env` if the key is already exported.
-5. Optionally run `npm run extract` to preload SEC advisor rows into `advisors.db`.
+1. Install the plugin: `openclaw plugins install advisor-lead-gen` (or `openclaw plugins install -l /path/to/advisor-lead-gen` for local dev). See **`references/SETUP_WIZARD.md`**.
+2. Enable: `openclaw plugins enable advisor-lead-gen`
+3. Set `BRAVE_API_KEY`: `openclaw config set env.BRAVE_API_KEY "<key>"`
+4. Create the orchestrator agent: `openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen`
+5. Restart the gateway: `openclaw gateway restart` — PM2 starts automatically; the dispatch cron is live.
+6. Optionally run `npm run extract` to preload SEC advisor rows into `advisors.db`.
 
+`npm run setup:openclaw` automates steps 1–2 and prints the remaining commands.
 For the full operator boundary, read `references/INSTALL_AUTOMATION.md`.
 
 ## Runtime Contract
@@ -255,12 +257,12 @@ The dispatch cron (`dispatch-cron.js`) is the only process that drains the queue
 
 Fix:
 ```bash
-cd ~/.openclaw/workspace/skills/advisor-lead-gen
+cd ~/.openclaw/extensions/advisor-lead-gen
 pm2 start ecosystem.config.js
 pm2 save
 ```
 
-If `pm2` is not on PATH, use `npx --yes pm2 start ecosystem.config.js` as a fallback. Verify with `pm2 status` that `advisor-cron` is `online` before assuming setup is complete.
+The plugin's `gateway:startup` hook does this automatically on every gateway restart. If the cron is still not running after a restart, check the gateway logs for `SETUP ERRORS` from the `advisor-lead-gen` plugin — they will list the exact fix command. If `pm2` is not on PATH, install it globally: `npm install -g pm2`, then restart the gateway.
 
 ### Long-Running Jobs And Disconnected Sessions
 

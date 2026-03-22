@@ -1,45 +1,50 @@
-# UpCaret OpenClaw skills
+# UpCaret OpenClaw
 
-This repository holds **[AgentSkills](https://agentskills.io)-compatible** OpenClaw skill bundles for UpCaret. Each skill lives in its own directory under `skills/` so you can version, test, and publish them independently.
+This repository holds OpenClaw **plugins** and related docs for UpCaret. The main product is **`plugins/advisor-lead-gen`**: a native OpenClaw plugin (with bundled `SKILL.md`) for SEC IAPD advisor lead gen and enrichment.
 
 ## Layout
 
 ```text
-skills/
-  advisor-lead-gen/     # SEC IAPD download + orchestrated enrichment
-  <future-skill>/       # add new skills as sibling folders
+plugins/
+  advisor-lead-gen/     # SEC IAPD download + orchestrated enrichment (plugin + skill)
 ```
 
-Each skill folder is self-contained: `SKILL.md`, `package.json`, `scripts/`, `agents/`, `references/`, etc.
+Each plugin folder is self-contained: `openclaw.plugin.json`, `plugin-entry.ts`, `SKILL.md`, `package.json`, `scripts/`, `agents/`, `references/`, etc.
 
-## Drop into any OpenClaw
+## Install (OpenClaw)
 
-1. Copy **`skills/advisor-lead-gen/`** *into* **`~/.openclaw/workspace/skills/advisor-lead-gen/`** so the skill files sit at the **root** of that directory (see **`skills/advisor-lead-gen/references/SETUP_WIZARD.md`**).
-2. In OpenClaw chat, say **“set up the lead gen skill”** — the agent follows **`skills/advisor-lead-gen/references/SETUP_WIZARD.md`** (chat-first: agent runs commands via tools when possible; user is not expected to use Terminal first).
-3. If you’re not using chat, on the host: **`cd ~/.openclaw/workspace/skills/advisor-lead-gen`**, **`npm run bootstrap`**, **`npm run setup:openclaw`**.
+Use the plugin flow (see **`plugins/advisor-lead-gen/references/DISTRIBUTION.md`**):
+
+```bash
+openclaw plugins install advisor-lead-gen   # or: openclaw plugins install -l /path/to/plugins/advisor-lead-gen
+openclaw plugins enable advisor-lead-gen
+openclaw config set env.BRAVE_API_KEY "<key>"
+openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen
+openclaw gateway restart
+```
+
+In chat you can still say **“set up the lead gen skill”** — the agent follows **`plugins/advisor-lead-gen/references/SETUP_WIZARD.md`**.
 
 ## Prerequisites
 
-- **Node.js** 22.5+ (required by `node:sqlite`; see each skill’s `package.json` `engines`)
+- **Node.js** 22.5+ (required by `node:sqlite`; see each plugin’s `package.json` `engines`)
 - **sqlite3** CLI on `PATH` (used by bootstrap / DB scripts)
-- For enrichment: **`BRAVE_API_KEY`** (and optional keys per skill docs)
+- For enrichment: **`BRAVE_API_KEY`** (and optional keys per plugin docs)
 
-## Working on a skill
+## Working on the plugin
 
 ```bash
-cd skills/advisor-lead-gen
+cd plugins/advisor-lead-gen
 npm install   # only if you add dependencies; currently empty
 npm test
 npm run bootstrap
 ```
 
-OpenClaw gateway setup is documented inside each skill (`npm run setup:openclaw`).
-
 ## Publishing
 
-- **ClawHub:** from a clean copy of a skill folder (no `advisors.db`, no secrets), use the [ClawHub CLI](https://docs.openclaw.ai/tools/clawhub): `clawhub publish ./skills/<name> ...`
-- **Private B2B:** distribute a zip or grant access to this repo / a release artifact—do not rely on ClawHub for private packages.
+- **npm / OpenClaw:** plugin `package.json` includes `openclaw.extensions`; see OpenClaw docs for `openclaw plugins install <npm-spec>`.
+- **ClawHub / private B2B:** distribute a zip or grant access to this repo — exclude `advisors.db`, `node_modules`, secrets.
 
 ## License
 
-Per-skill licenses are declared in each skill’s `package.json` (default MIT unless noted otherwise).
+Per-plugin licenses are declared in each `package.json` (default MIT unless noted otherwise).

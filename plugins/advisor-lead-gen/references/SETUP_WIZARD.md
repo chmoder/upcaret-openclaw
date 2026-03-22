@@ -1,24 +1,30 @@
 # Setup wizard — "set up the lead gen skill"
 
-**Distribution pattern:** copy the skill to one place → chat with OpenClaw → done.  
+**Distribution pattern:** install the **plugin** once → chat with OpenClaw → done.  
 **Release checklist:** see `references/DISTRIBUTION.md`.
 
 ---
 
-## Install location (one path, not two)
+## Install location (plugin — one path, not two)
+
+After `openclaw plugins install`, OpenClaw places the plugin at:
 
 ```text
-~/.openclaw/workspace/skills/advisor-lead-gen/
-  SKILL.md          ← main agent loads this for triggering
+~/.openclaw/extensions/advisor-lead-gen/
+  SKILL.md          ← discovered via plugin manifest
+  openclaw.plugin.json
+  plugin-entry.ts   ← gateway:startup hook (PM2 cron)
   package.json
   scripts/
   agents/
   references/
 ```
 
-The `advisor-enrich` OpenClaw agent's `--workspace` points to **this same directory** — there is no separate `workspace-advisor-enrich/` to copy to. Install once, run from there.
+The `advisor-enrich` OpenClaw agent's `--workspace` points to **this same directory** (`~/.openclaw/extensions/advisor-lead-gen`). Do not copy into `workspace/skills/` for the plugin flow.
 
-**Container path equivalent:** `/home/node/.openclaw/workspace/skills/advisor-lead-gen/`
+**Container path equivalent:** `/home/node/.openclaw/extensions/advisor-lead-gen/`
+
+**Repo path (this project):** `plugins/advisor-lead-gen/` under **`upcaret-openclaw`**.
 
 ---
 
@@ -43,7 +49,7 @@ The user starts in **OpenClaw chat** with something like **"set up the lead gen 
 ### 1. Bootstrap
 
 ```bash
-cd ~/.openclaw/workspace/skills/advisor-lead-gen
+cd ~/.openclaw/extensions/advisor-lead-gen
 npm run bootstrap
 ```
 
@@ -61,10 +67,10 @@ Prints the exact `openclaw agents add advisor-enrich --workspace <this-dir>` com
 
 ```bash
 openclaw agents add advisor-enrich \
-  --workspace ~/.openclaw/workspace/skills/advisor-lead-gen
+  --workspace ~/.openclaw/extensions/advisor-lead-gen
 ```
 
-> Note: `--non-interactive` and `--model` flags are not supported in OpenClaw 2026.3+. If running via `docker compose run`, add `-T` to disable TTY: `docker compose run --rm -T openclaw-cli agents add advisor-enrich --workspace /home/node/.openclaw/workspace/skills/advisor-lead-gen`
+> Note: `--non-interactive` and `--model` flags are not supported in OpenClaw 2026.3+. If running via `docker compose run`, add `-T` to disable TTY: `docker compose run --rm -T openclaw-cli agents add advisor-enrich --workspace /home/node/.openclaw/extensions/advisor-lead-gen`
 
 ### 3.5. Start the orchestrator session (REQUIRED before any enrichment)
 
@@ -83,9 +89,11 @@ This runs one turn of the advisor-enrich agent and creates its session. The sess
 
 Verify: run `sessions_list` from chat and confirm a session with `agentId: "advisor-enrich"` and key `agent:advisor-enrich:main` appears. If no session appears, repeat step 3.5 before proceeding.
 
-### 4. Start the dispatch cron with PM2 (REQUIRED — without it nothing enriches)
+### 4. Dispatch cron (PM2)
 
-`dispatch-cron.js` is the **only** process that sends `ENRICH` to the `advisor-enrich` agent. `enqueue-enrich.js` only writes a DB row — the cron is what actually triggers the agent.
+**Plugin installs:** after `openclaw gateway restart`, the plugin’s `gateway:startup` hook runs `pm2 start` for `advisor-cron` if needed (requires **`npm install -g pm2`** on the gateway host). Check gateway logs for `SETUP ERRORS` if the queue does not move.
+
+**Manual / recovery:** `dispatch-cron.js` is the **only** process that sends `ENRICH` to the `advisor-enrich` agent. `enqueue-enrich.js` only writes a DB row — the cron is what actually triggers the agent.
 
 **PM2** is the process manager — same commands on Docker, Linux, macOS, and Windows.
 
@@ -97,7 +105,7 @@ npm install -g pm2
 
 **② Start the cron:**
 ```bash
-cd ~/.openclaw/workspace/skills/advisor-lead-gen
+cd ~/.openclaw/extensions/advisor-lead-gen
 pm2 start ecosystem.config.js
 pm2 save
 # or via the skill: npm run cron:start && npm run cron:save
@@ -112,7 +120,7 @@ pm2 save
 **For Docker** (run inside the container where `openclaw` CLI lives):
 ```bash
 docker exec <container> npm install -g pm2
-docker exec <container> sh -c "cd /home/node/.openclaw/workspace/skills/advisor-lead-gen && pm2 start ecosystem.config.js && pm2 save"
+docker exec <container> sh -c "cd /home/node/.openclaw/extensions/advisor-lead-gen && pm2 start ecosystem.config.js && pm2 save"
 ```
 
 **Useful PM2 commands:**
@@ -154,17 +162,17 @@ sessions_send({ sessionKey: "agent:advisor-enrich:main", agentId: "advisor-enric
 ### Install from a zip or git clone
 
 ```bash
-mkdir -p ~/.openclaw/workspace/skills/advisor-lead-gen
+mkdir -p ~/.openclaw/extensions/advisor-lead-gen
 
 # From a zip (extract flat — package.json must be at the root, not nested):
-unzip advisor-lead-gen.zip -d ~/.openclaw/workspace/skills/advisor-lead-gen
+unzip advisor-lead-gen.zip -d ~/.openclaw/extensions/advisor-lead-gen
 
 # Or from a git repo:
 rsync -a --exclude node_modules --exclude advisors.db \
-  /path/to/upcaret-openclaw-skills/skills/advisor-lead-gen/ \
-  ~/.openclaw/workspace/skills/advisor-lead-gen/
+  /path/to/upcaret-openclaw/plugins/advisor-lead-gen/ \
+  ~/.openclaw/extensions/advisor-lead-gen/
 
-cd ~/.openclaw/workspace/skills/advisor-lead-gen
+cd ~/.openclaw/extensions/advisor-lead-gen
 npm run bootstrap
 npm run setup:openclaw
 ```

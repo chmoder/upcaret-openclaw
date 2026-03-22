@@ -7,7 +7,7 @@ Thumbs.db
 .env.*
 !.env.example
 
-# Node (any skill subfolder)
+# Node (any plugin subfolder)
 node_modules/
 npm-debug.log*
 package-lock.json.bak

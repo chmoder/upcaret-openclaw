@@ -37,6 +37,9 @@
   "engines": {
     "node": ">=22.5.0"
   },
+  "openclaw": {
+    "extensions": ["./plugin-entry.ts"]
+  },
   "env": {
     "BRAVE_API_KEY": {
       "required": true,
