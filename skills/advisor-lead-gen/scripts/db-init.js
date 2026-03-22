@@ -52,7 +52,7 @@ function initSchema(db) {
       validation_status TEXT DEFAULT 'pending',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      enriched_at DATETIME,
+      enriched_at DATETIME
     );
     CREATE TABLE IF NOT EXISTS advisor_findings (
       finding_id INTEGER PRIMARY KEY AUTOINCREMENT,
