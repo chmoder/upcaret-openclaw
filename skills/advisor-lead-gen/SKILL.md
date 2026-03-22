@@ -52,12 +52,12 @@ Natural-language requests like these are the intended interface:
 
 Under the hood, the main agent or routing layer should translate those requests into the orchestrator protocol described below. Routing guidance belongs in `references/MAIN_AGENT_ROUTING.md`, not in this skill file.
 
-### What `scripts/orchestrator.js` Actually Handles
+### What The Orchestrator Agent Handles
 
-`scripts/orchestrator.js` is intentionally narrow. It handles:
+The `advisor-enrich` agent (system prompt: `IDENTITY.md`) is intentionally narrow. It handles:
 
 - `ENRICH:{...advisor_json...}` to start an enrichment run.
-- `TICK` to advance or poll a run that has not finished yet.
+- `TICK` to advance a run that has not finished yet (manual recovery; dispatch-cron.js handles this automatically).
 - `ENV` and built-in help messages for runtime inspection.
 - `STATUS` (or `/leadgen status`) to return a raw status dashboard payload from `advisors.db`.
 
@@ -166,10 +166,10 @@ SEC download only:
 node scripts/extract-advisors.js --state NE --limit 50
 ```
 
-Local orchestrator testing:
+Queue one advisor for enrichment (dispatch-cron.js picks it up within 5s):
 
 ```bash
-npm run orchestrate
+node scripts/enqueue-enrich.js --sec-id 4167394
 ```
 
 ## Repository Layout
@@ -177,10 +177,12 @@ npm run orchestrate
 ```text
 advisor-lead-gen/
 ├── SKILL.md
+├── IDENTITY.md              ← orchestrator system prompt (advisor-enrich agent)
+├── ARCHITECTURE.md
 ├── package.json
-├── advisors.db
+├── ecosystem.config.js      ← PM2 config for dispatch-cron
+├── advisors.db              ← runtime data (not committed)
 ├── agents/
-│   ├── orchestrator.md
 │   ├── profile.md
 │   ├── email.md
 │   ├── phone.md
@@ -193,18 +195,29 @@ advisor-lead-gen/
 │   ├── network.md
 │   └── scorer.md
 ├── scripts/
-│   ├── orchestrator.js
 │   ├── extract-advisors.js
+│   ├── enqueue-enrich.js    ← queue one advisor for enrichment
+│   ├── dispatch-cron.js     ← long-running process that fires ENRICH
+│   ├── record-enrichment.js
+│   ├── save-enrichment.js
+│   ├── reset-session.js
+│   ├── next-advisor.js
+│   ├── reset-queue.js
 │   ├── db-init.js
+│   ├── db.js
 │   ├── bootstrap.js
 │   ├── openclaw-setup.js
 │   ├── status-dashboard.js
+│   ├── env.js
 │   └── env-help.js
 └── references/
     ├── ASSISTANT_GUIDE.md
     ├── INSTALL_AUTOMATION.md
     ├── MAIN_AGENT_ROUTING.md
-    └── OPENCLAW_RUNTIME.md
+    ├── OPENCLAW_RUNTIME.md
+    ├── SETUP_WIZARD.md
+    ├── DISTRIBUTION.md
+    └── MODEL_DEFAULTS.md
 ```
 
 ## Data And Monitoring

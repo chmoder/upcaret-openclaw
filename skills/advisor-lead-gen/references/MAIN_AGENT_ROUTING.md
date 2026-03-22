@@ -4,7 +4,7 @@
 
 In OpenClaw, the **main agent** is the primary agent you talk to; its direct chat session commonly uses the session key **`main`** (see [Session Tools](https://docs.openclaw.ai/concepts/session-tool)). That **main agent** should route enrichment work to the **orchestrator** session (recommended `advisor-enrich`; some installs use `lead-gen`).
 
-**Scope:** This document describes how the **main agent** (or any **requesting** agent you configure) should interpret user intent. The skill’s `scripts/orchestrator.js` session directly handles **`ENRICH:{...}`**, **`TICK`**, **`ENV`**, and **`/leadgen env` / `/leadgen help`** only. Commands like `/leadgen enrich`, export, status, or retry are **your** responsibility to map to `node scripts/extract-advisors.js`, SQL, CSV, or `sessions_send` with `ENRICH:{...}`.
+**Scope:** This document describes how the **main agent** (or any **requesting** agent you configure) should interpret user intent. The `advisor-enrich` orchestrator agent (`IDENTITY.md`) directly handles **`ENRICH:{...}`**, **`TICK`**, **`ENV`**, and **`/leadgen env` / `/leadgen help`** only. Commands like `/leadgen enrich`, export, status, or retry are **your** responsibility to map to `node scripts/extract-advisors.js`, SQL, CSV, or `sessions_send` with `ENRICH:{...}`.
 
 ## Supported User Intents
 

@@ -6,7 +6,7 @@
 |------|---------------------------------------------|
 | **`openclaw agents add`** | Creates entries in gateway config (`openclaw.json`) and workspaces. Requires the **OpenClaw CLI** on the host that runs the gateway. |
 | **`openclaw config set env.*` or `openclaw env set`** | Writes secrets and gateway env. Must run where your gateway reads config (often the same machine as `openclaw`). |
-| **Orchestrator = process with `sessions_*`** | The `advisor-enrich` agent must use **this skill's directory** as its workspace (`~/.openclaw/workspace/skills/advisor-lead-gen`). This skill ships `scripts/orchestrator.js` but does not register itself as an agent. |
+| **Orchestrator = process with `sessions_*`** | The `advisor-enrich` agent must use **this skill's directory** as its workspace (`~/.openclaw/workspace/skills/advisor-lead-gen`). The orchestrator is the `advisor-enrich` agent whose system prompt is `IDENTITY.md`. This skill does not self-register as an agent. |
 | **`sessions_send` / `TICK` with a real `sessionKey`** | Keys come from `sessions_list` at runtime. The skill can document patterns; only a running client (main agent, control UI, gateway) can call session tools. |
 | **Named persistent session + cron** | OpenClaw routes `agentTurn` jobs using `sessionTarget` (e.g. `session:advisor-orchestrator`). You must set `agentId` on each job to `advisor-enrich` (or your orchestrator id); otherwise the gateway may fall back to the default agent ([cron docs](https://docs.openclaw.ai/cron)). There is no separate "bind agent to session forever" line in `openclaw.json` — **per-job `agentId`** is the binding. |
 

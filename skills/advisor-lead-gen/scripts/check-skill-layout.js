@@ -15,10 +15,9 @@ const required = [
   "scripts/enqueue-enrich.js",
   "scripts/record-enrichment.js",
   "scripts/save-enrichment.js",
-  "scripts/orchestrator.js",
+  "scripts/dispatch-cron.js",
   "scripts/status-dashboard.js",
   "scripts/env.js",
-  "agents/orchestrator.md",
   "agents/profile.md",
   "agents/scorer.md",
 ];
@@ -32,4 +31,4 @@ for (const rel of required) {
   }
 }
 if (!ok) process.exit(1);
-console.log("OK: extract-advisors + orchestrator + prompts + db-init + env");
+console.log("OK: IDENTITY.md + extract-advisors + enqueue + record/save + dispatch-cron + prompts + db + env");

@@ -177,7 +177,7 @@ function buildPayload({ dbPath, limit, secId }) {
   // --- Advisor totals ---
   // "pending" = never enriched OR enriched but stale (older than 14 days).
   // enriched_at IS NOT NULL means the advisor has been enriched at least once;
-  // stale advisors will be re-enriched automatically by dispatch-enrich.js.
+  // stale advisors will be re-enriched automatically by dispatch-cron.js (via enqueue-enrich.js).
   const STALE_DAYS = 14;
   if (payload.tables.advisors) {
     payload.totals.advisors_total = Number(

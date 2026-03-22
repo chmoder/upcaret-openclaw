@@ -5,7 +5,7 @@
   "main": "scripts/extract-advisors.js",
   "scripts": {
     "extract": "node scripts/extract-advisors.js",
-    "orchestrate": "echo 'scripts/orchestrator.js is deprecated. The orchestrator is IDENTITY.md (advisor-enrich agent). Use dispatch-enrich.js to queue advisors.' && exit 1",
+    "orchestrate": "echo 'The orchestrator is IDENTITY.md (advisor-enrich agent). To queue an advisor: node scripts/enqueue-enrich.js --sec-id <ID>. To run the cron: npm run cron.' && exit 1",
     "status": "node scripts/status-dashboard.js",
     "db:init": "node scripts/db-init.js",
     "bootstrap": "node scripts/bootstrap.js",

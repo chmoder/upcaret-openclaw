@@ -20,7 +20,7 @@ Each skill folder is self-contained: `SKILL.md`, `package.json`, `scripts/`, `ag
 
 ## Prerequisites
 
-- **Node.js** 18+ (see each skill’s `package.json` `engines` if stricter)
+- **Node.js** 22.5+ (required by `node:sqlite`; see each skill’s `package.json` `engines`)
 - **sqlite3** CLI on `PATH` (used by bootstrap / DB scripts)
 - For enrichment: **`BRAVE_API_KEY`** (and optional keys per skill docs)
 

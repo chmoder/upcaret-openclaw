@@ -48,7 +48,7 @@ function main() {
 
   if (!secId || !Number.isFinite(secId)) {
     console.error("ERROR: --sec-id <ID> is required");
-    console.error("Usage: node scripts/dispatch-enrich.js --sec-id 4167394");
+    console.error("Usage: node scripts/enqueue-enrich.js --sec-id 4167394");
     process.exit(1);
   }
 

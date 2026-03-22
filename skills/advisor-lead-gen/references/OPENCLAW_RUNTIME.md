@@ -1,6 +1,6 @@
 # OpenClaw runtime (this skill)
 
-This skill’s enrichment path is **only** meaningful inside an **OpenClaw agent session** that exposes **Session Tools**. Plain `node scripts/orchestrator.js` in a shell or a one-off subprocess **does not** provide `sessions_spawn` / `sessions_yield` / `sessions_history`, so the agent-to-agent pipeline cannot complete.
+This skill’s enrichment path is **only** meaningful inside an **OpenClaw agent session** that exposes **Session Tools**. Running a plain Node.js subprocess does not provide `sessions_spawn` / `sessions_yield` / `sessions_history`, so the agent-to-agent pipeline cannot complete.
 
 **Official reference:** [Session Tools — OpenClaw docs](https://docs.openclaw.ai/concepts/session-tool) (`sessions_list`, `sessions_send`, `sessions_spawn`, `sessions_history`).
 
@@ -8,7 +8,7 @@ This skill’s enrichment path is **only** meaningful inside an **OpenClaw agent
 
 ## 1. Where the orchestrator must run
 
-The enrichment orchestrator is implemented by **`IDENTITY.md`** (the system prompt for the `advisor-enrich` agent). `scripts/orchestrator.js` is an older reference script and is **not** the active implementation — do not rely on it.
+The enrichment orchestrator is implemented by **`IDENTITY.md`** (the system prompt for the `advisor-enrich` agent).
 
 | Requirement | Why |
 |-------------|-----|

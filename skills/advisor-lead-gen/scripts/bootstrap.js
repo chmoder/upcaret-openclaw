@@ -14,14 +14,17 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 
 const REQUIRED_PATHS = [
+  "IDENTITY.md",
   "scripts/extract-advisors.js",
-  "scripts/orchestrator.js",
+  "scripts/enqueue-enrich.js",
+  "scripts/record-enrichment.js",
+  "scripts/save-enrichment.js",
+  "scripts/dispatch-cron.js",
   "scripts/db-init.js",
   "scripts/status-dashboard.js",
   "scripts/env.js",
   "agents/profile.md",
   "agents/scorer.md",
-  "agents/orchestrator.md",
 ];
 
 function checkNodeSqlite() {
