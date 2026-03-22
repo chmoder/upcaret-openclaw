@@ -27,7 +27,7 @@
 "use strict";
 
 const path = require("path");
-const { openDb, dbGet, dbAll, computeAdvisorHash } = require("./db");
+const { openDb, dbGet } = require("./db");
 const { initSchema } = require("./db-init");
 
 const DB_PATH = path.join(__dirname, "..", "advisors.db");
@@ -70,7 +70,7 @@ function main() {
     // Look up the advisor.
     const a = dbGet(
       db,
-      `SELECT sec_id, first_name, last_name, firm_name, city, state, data_hash
+      `SELECT sec_id, first_name, last_name, firm_name, city, state
        FROM advisors WHERE sec_id = ?`,
       [secId],
     );
@@ -89,12 +89,11 @@ function main() {
       crd: String(a.sec_id),
     };
     const json = JSON.stringify(payload);
-    const hash = computeAdvisorHash(a);
 
     db.prepare(
-      `INSERT INTO enrichment_queue (sec_id, advisor_json, status, queued_at, data_hash)
-       VALUES (?, ?, 'queued', datetime('now'), ?)`,
-    ).run(Number(a.sec_id), json, hash);
+      `INSERT INTO enrichment_queue (sec_id, advisor_json, status, queued_at)
+       VALUES (?, ?, 'queued', datetime('now'))`,
+    ).run(Number(a.sec_id), json);
 
     console.log(`QUEUED:${a.sec_id}`);
   } finally {

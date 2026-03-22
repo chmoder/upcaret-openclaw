@@ -4,8 +4,7 @@
  *
  * Queries advisors.db and returns the single best candidate to enrich next:
  *   1. Never enriched (enriched_at IS NULL) — highest priority
- *   2. Data changed since last enrichment (data_hash mismatch)
- *   3. Stale — enriched_at older than ENRICH_THRESHOLD_DAYS (default: 90)
+ *   2. Stale — enriched_at older than ENRICH_THRESHOLD_DAYS (default: 90)
  *
  * Excludes advisors currently queued or running in enrichment_queue.
  *
@@ -35,7 +34,7 @@
 'use strict';
 
 const path = require('path');
-const { openDb, dbGet, computeAdvisorHash } = require('./db');
+const { openDb, dbGet } = require('./db');
 const { initSchema } = require('./db-init');
 
 const DB_PATH = path.join(__dirname, '..', 'advisors.db');
@@ -77,7 +76,7 @@ function main() {
 
     // Priority 1: never enriched.
     const neverEnriched = dbGet(db, `
-      SELECT a.sec_id, a.first_name, a.last_name, a.data_hash
+      SELECT a.sec_id, a.first_name, a.last_name
       FROM advisors a
       WHERE a.enriched_at IS NULL
         ${stateFilter}
@@ -90,30 +89,7 @@ function main() {
       return;
     }
 
-    // Priority 2: data changed since last enrichment (hash mismatch).
-    // We compare the stored data_hash to a recomputed one for each row,
-    // but SQLite can't call JS functions — so we load all candidates and
-    // filter in JS. Cap at 500 rows to stay fast.
-    const hashCandidates = db.prepare(`
-      SELECT a.sec_id, a.first_name, a.last_name, a.firm_name,
-             a.city, a.state, a.data_hash, a.enriched_at
-      FROM advisors a
-      WHERE a.enriched_at IS NOT NULL
-        ${stateFilter}
-        AND a.sec_id NOT IN (${blockedSub})
-      ORDER BY a.enriched_at ASC
-      LIMIT 500
-    `).all();
-
-    for (const a of hashCandidates) {
-      const current = computeAdvisorHash(a);
-      if (current !== a.data_hash) {
-        console.log(`NEXT:${a.sec_id}`);
-        return;
-      }
-    }
-
-    // Priority 3: stale (enriched_at older than threshold).
+    // Priority 2: stale (enriched_at older than threshold).
     const stale = dbGet(db, `
       SELECT a.sec_id
       FROM advisors a

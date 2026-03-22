@@ -29,7 +29,7 @@
 'use strict';
 
 const path = require('path');
-const { openDb, dbRun, dbGet, computeAdvisorHash } = require('./db');
+const { openDb, dbRun, dbGet } = require('./db');
 
 const DB_PATH = path.join(__dirname, '..', 'advisors.db');
 
@@ -88,10 +88,6 @@ function main() {
       process.exit(1);
     }
 
-    // Compute hash of the advisor's current IAPD fields so we can detect future changes.
-    const advisorRow = dbGet(db, `SELECT sec_id, first_name, last_name, firm_name, city, state FROM advisors WHERE sec_id = ?`, [sec_id]);
-    const dataHash = advisorRow ? computeAdvisorHash(advisorRow) : null;
-
     // Update advisor row
     dbRun(
       db,
@@ -100,14 +96,13 @@ function main() {
            updated_at        = datetime('now'),
            lead_score        = ?,
            lead_score_reason = ?,
-           data_hash         = ?,
            validation_status = CASE
              WHEN validation_status IS NULL OR validation_status = 'pending'
              THEN 'enriched'
              ELSE validation_status
            END
        WHERE sec_id = ?`,
-      [Number(lead_score) || 0, String(score_reason || ''), dataHash, sec_id]
+      [Number(lead_score) || 0, String(score_reason || ''), sec_id]
     );
 
     // Insert findings

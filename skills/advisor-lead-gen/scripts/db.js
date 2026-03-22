@@ -12,27 +12,8 @@
  */
 
 const path = require('path');
-const crypto = require('crypto');
 
 const DEFAULT_DB_PATH = path.join(__dirname, '../advisors.db');
-
-/**
- * Stable hash of an advisor's core IAPD identity fields.
- * Used to detect whether the advisor's data has changed since last enrichment.
- * Hash changes → re-enrich even if recently enriched.
- * Hash unchanged → skip re-enrichment within the refresh window.
- */
-function computeAdvisorHash(advisor) {
-  const key = JSON.stringify({
-    sec_id:    String(advisor.sec_id    || '').trim(),
-    first:     String(advisor.first_name || '').trim().toUpperCase(),
-    last:      String(advisor.last_name  || '').trim().toUpperCase(),
-    firm:      String(advisor.firm_name  || '').trim().toUpperCase(),
-    city:      String(advisor.city       || '').trim().toUpperCase(),
-    state:     String(advisor.state      || '').trim().toUpperCase(),
-  });
-  return crypto.createHash('sha256').update(key).digest('hex').slice(0, 16);
-}
 
 // Suppress the ExperimentalWarning emitted when requiring node:sqlite on Node 22/24.
 // Uses a targeted process.on('warning') handler rather than monkeypatching process.emit.
@@ -72,4 +53,4 @@ function dbGet(db, sql, params) {
   return rows[0] ?? null;
 }
 
-module.exports = { openDb, dbRun, dbAll, dbGet, DEFAULT_DB_PATH, computeAdvisorHash };
+module.exports = { openDb, dbRun, dbAll, dbGet, DEFAULT_DB_PATH };

@@ -53,7 +53,6 @@ function initSchema(db) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       enriched_at DATETIME,
-      data_hash TEXT
     );
     CREATE TABLE IF NOT EXISTS advisor_findings (
       finding_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +91,6 @@ function initSchema(db) {
       started_at DATETIME,
       completed_at DATETIME,
       lead_score INTEGER,
-      data_hash TEXT,
       error TEXT,
       FOREIGN KEY(sec_id) REFERENCES advisors(sec_id)
     );
@@ -119,14 +117,17 @@ function initSchema(db) {
   ensureColumn(db, 'advisor_findings', 'agent_name', 'TEXT');
   ensureColumn(db, 'advisor_findings', 'is_trigger_event', 'INTEGER DEFAULT 0');
   ensureColumn(db, 'advisors', 'created_at', 'DATETIME');
-  ensureColumn(db, 'advisors', 'data_hash', 'TEXT');
-  ensureColumn(db, 'enrichment_queue', 'data_hash', 'TEXT');
 
-  // Drop redundant columns removed in v3.2 (SQLite >=3.35 supports DROP COLUMN).
+  // Drop columns removed in v3.2+ (SQLite >=3.35 supports DROP COLUMN).
   // Safe to call repeatedly — ignores errors if columns don't exist.
-  for (const col of ['enrichment_notes', 'agents_processed']) {
+  for (const col of ['enrichment_notes', 'agents_processed', 'data_hash']) {
     try {
       db.exec(`ALTER TABLE advisors DROP COLUMN ${col}`);
+    } catch (_) { /* column already gone or SQLite version too old — ignore */ }
+  }
+  for (const col of ['data_hash']) {
+    try {
+      db.exec(`ALTER TABLE enrichment_queue DROP COLUMN ${col}`);
     } catch (_) { /* column already gone or SQLite version too old — ignore */ }
   }
 }
