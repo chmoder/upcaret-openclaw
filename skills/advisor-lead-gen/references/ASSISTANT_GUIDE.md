@@ -9,10 +9,12 @@ This skill is used from **chat**. The model (main agent) should **try OpenClaw f
 - **Do not fabricate data.** If `npm run extract` fails or the SEC API is unreachable, stop and report the error. Never generate synthetic/mock advisor rows and present them as real data. An enrichment is only complete when `enriched_at` is NOT null in the DB — not when the orchestrator says something that looks like a result.
 - **Do not create new files.** The skill's file list is canonical (see `ARCHITECTURE.md`). Do not write new scripts, workarounds, or agent definition files.
 - **Do not write into `~/.openclaw/agents/`.** Never create or modify files in any agent directory (prompts, auth configs, session files). If the orchestrator lacks a system prompt, that is a setup problem — report it and point to `SETUP_WIZARD.md`.
-- **Do not install npm packages.** `package.json` has no runtime `dependencies` by design. Never `npm install` anything.
+- **Do not install npm packages.** `package.json` has no runtime `dependencies` by design. Never `npm install` anything — not `better-sqlite3`, not `sqlite3`, not anything. If a script says "Cannot find module X", the answer is not to install X; run `node scripts/bootstrap.js` to verify the environment and check that `node --version` is ≥ 22.5 (which provides the built-in `node:sqlite` module).
+- **Do not use ad-hoc SQLite access.** Never write `node -e "require('better-sqlite3')..."` or any inline DB code. The only approved DB access paths are `scripts/status-dashboard.js`, `scripts/record-enrichment.js`, `scripts/enqueue-enrich.js`, `scripts/save-enrichment.js`, and `scripts/next-advisor.js`. Use them via `npm run status` or `node scripts/<name>.js`.
 - **Do not initialize a git repo** or create `.git/` in the skill directory.
 - **Do not create markdown files.** Point the user to existing docs instead.
 - **Report failures honestly.** If exec is unavailable, the CLI is missing, or the SEC API is unreachable, say so and give the user exact steps to resolve it. Never silently work around a failure.
+- **The dispatch cron must be running for enrichment to work.** Queued rows sit forever if `advisor-cron` is not online in PM2. After setup, always verify with `pm2 status` and confirm `advisor-cron` is `online`. If not, start it: `cd ~/.openclaw/workspace/skills/advisor-lead-gen && pm2 start ecosystem.config.js && pm2 save`.
 - **Never tell the user to configure ACP, Discord, or Slack to enable enrichment.** Errors from `sessions_spawn` (including "ACP not configured") mean that approach is wrong — not that enrichment is impossible. The exec path (`openclaw agent --agent advisor-enrich`) works without ACP and without persistent channels. Use it.
 
 ---
@@ -31,7 +33,15 @@ Say something like: "Found the skill — running bootstrap and setup now." Then 
 2. Run `npm run setup:openclaw` via **exec**; read the output and execute the printed `openclaw agents add advisor-enrich --workspace <dir>` command. If running via Docker, add `-T` to disable TTY: `docker compose run --rm -T openclaw-cli agents add advisor-enrich --workspace /home/node/.openclaw/workspace/skills/advisor-lead-gen`. Do NOT pass `--non-interactive` or `--model` — those flags are not supported in OpenClaw 2026.3+.
 3. **Start the orchestrator session** — run `openclaw agent --agent advisor-enrich --message STATUS --timeout 60` via exec. This creates the advisor-enrich agent session. If exec is unavailable, tell the user to open a chat with the advisor-enrich agent and send `STATUS`. This step is required before any webchat enrichment will work.
 4. Check if `BRAVE_API_KEY` is already configured: run `openclaw config get env.BRAVE_API_KEY` via exec. If it returns a value, skip to step 5. Otherwise ask the user for the key in chat (one question, not a list of options) then apply: `openclaw config set env.BRAVE_API_KEY "<key>"`.
-5. Verify with `sessions_list` → confirm session with `agentId: "advisor-enrich"` present → `sessions_send ENV` (with `agentId: "advisor-enrich"`).
+5. **Start the dispatch cron with PM2** (REQUIRED — without it nothing enriches):
+   ```bash
+   cd ~/.openclaw/workspace/skills/advisor-lead-gen
+   npm install -g pm2                  # one-time; inside Docker: npm install -g pm2 --prefix /usr/local
+   pm2 start ecosystem.config.js
+   pm2 save
+   ```
+   Verify it is running: `pm2 status` should show `advisor-cron` as `online`. If `pm2` is not on PATH after install, use `npx --yes pm2 start ecosystem.config.js` as a fallback (it spawns its own daemon under `~/.pm2`). Either way, confirm `advisor-cron` is `online` before telling the user setup is complete.
+6. Verify with `sessions_list` → confirm session with `agentId: "advisor-enrich"` present → `sessions_send ENV` (with `agentId: "advisor-enrich"`).
 
 If exec is unavailable, skip to **`SETUP_WIZARD.md`** Fallback block and give the user exact copy-paste commands — still no menu.
 

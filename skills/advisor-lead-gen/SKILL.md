@@ -227,6 +227,28 @@ Approximate external-search cost is low; the main constraint is usually provider
 
 ## Troubleshooting
 
+### "Cannot find module 'better-sqlite3'" (or any sqlite module)
+
+This skill uses **`node:sqlite`** — a built-in Node.js module available from Node 22.5+. There are no npm database dependencies. If you see this error:
+
+- Do **not** run `npm install better-sqlite3`, `npm install sqlite3`, or any variant.
+- Run `node --version` — it must be ≥ 22.5. If it is not, upgrade Node.
+- Run `npm run bootstrap` to verify the environment is correct.
+- Never access the DB with ad-hoc `node -e "require('better-sqlite3')..."`. Use the provided scripts only: `npm run status`, `node scripts/enqueue-enrich.js`, etc.
+
+### Queue is stuck / enrichment never starts
+
+The dispatch cron (`dispatch-cron.js`) is the only process that drains the queue. If `pm2 status` does not show `advisor-cron` as `online`, the queue will not move.
+
+Fix:
+```bash
+cd ~/.openclaw/workspace/skills/advisor-lead-gen
+pm2 start ecosystem.config.js
+pm2 save
+```
+
+If `pm2` is not on PATH, use `npx --yes pm2 start ecosystem.config.js` as a fallback. Verify with `pm2 status` that `advisor-cron` is `online` before assuming setup is complete.
+
 ### Long-Running Jobs And Disconnected Sessions
 
 If an import or enrichment runs for a long time and the device sleeps, the network connection may drop even if the backend job is still progressing.
