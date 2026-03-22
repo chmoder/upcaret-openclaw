@@ -61,10 +61,10 @@ Prints the exact `openclaw agents add advisor-enrich --workspace <this-dir>` com
 
 ```bash
 openclaw agents add advisor-enrich \
-  --workspace ~/.openclaw/workspace/skills/advisor-lead-gen \
-  --non-interactive \
-  --model anthropic/claude-haiku-4-5
+  --workspace ~/.openclaw/workspace/skills/advisor-lead-gen
 ```
+
+> Note: `--non-interactive` and `--model` flags are not supported in OpenClaw 2026.3+. If running via `docker compose run`, add `-T` to disable TTY: `docker compose run --rm -T openclaw-cli agents add advisor-enrich --workspace /home/node/.openclaw/workspace/skills/advisor-lead-gen`
 
 ### 3.5. Start the orchestrator session (REQUIRED before any enrichment)
 

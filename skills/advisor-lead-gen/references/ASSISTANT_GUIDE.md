@@ -28,10 +28,10 @@ Say something like: "Found the skill — running bootstrap and setup now." Then 
 **One install location:** `~/.openclaw/workspace/skills/advisor-lead-gen/` (container: `/home/node/.openclaw/workspace/skills/advisor-lead-gen/`). The `advisor-enrich` agent's `--workspace` points here. No separate directory needed.
 
 1. Run `npm run bootstrap` via **exec** (cwd = skill dir). Report pass/fail.
-2. Run `npm run setup:openclaw` via **exec**; read the output and execute the printed `openclaw agents add advisor-enrich --workspace <dir> --model anthropic/claude-haiku-4-5` command.
+2. Run `npm run setup:openclaw` via **exec**; read the output and execute the printed `openclaw agents add advisor-enrich --workspace <dir>` command. If running via Docker, add `-T` to disable TTY: `docker compose run --rm -T openclaw-cli agents add advisor-enrich --workspace /home/node/.openclaw/workspace/skills/advisor-lead-gen`. Do NOT pass `--non-interactive` or `--model` — those flags are not supported in OpenClaw 2026.3+.
 3. **Start the orchestrator session** — run `openclaw agent --agent advisor-enrich --message STATUS --timeout 60` via exec. This creates the advisor-enrich agent session. If exec is unavailable, tell the user to open a chat with the advisor-enrich agent and send `STATUS`. This step is required before any webchat enrichment will work.
-4. Ask the user for **`BRAVE_API_KEY`** in chat (one question, not a list of options).
-5. Apply `openclaw config set env.BRAVE_API_KEY "<key>"`; verify with `sessions_list` → confirm session present → `sessions_send ENV` (with `agentId: "advisor-enrich"`).
+4. Check if `BRAVE_API_KEY` is already configured: run `openclaw config get env.BRAVE_API_KEY` via exec. If it returns a value, skip to step 5. Otherwise ask the user for the key in chat (one question, not a list of options) then apply: `openclaw config set env.BRAVE_API_KEY "<key>"`.
+5. Verify with `sessions_list` → confirm session with `agentId: "advisor-enrich"` present → `sessions_send ENV` (with `agentId: "advisor-enrich"`).
 
 If exec is unavailable, skip to **`SETUP_WIZARD.md`** Fallback block and give the user exact copy-paste commands — still no menu.
 

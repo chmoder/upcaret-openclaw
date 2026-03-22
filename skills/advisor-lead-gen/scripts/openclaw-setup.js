@@ -101,9 +101,12 @@ function main() {
   );
   console.log(
     `  openclaw agents add ${DEFAULT_AGENT_ID} \\\n` +
-      `    --workspace "${ws}" \\\n` +
-      `    --non-interactive \\\n` +
-      `    --model anthropic/claude-haiku-4-5\n`,
+      `    --workspace "${ws}"\n`,
+  );
+  console.log(
+    "  # Via Docker (add -T to disable TTY):\n" +
+      `  docker compose run --rm -T openclaw-cli agents add ${DEFAULT_AGENT_ID} \\\n` +
+      `    --workspace "/home/node/.openclaw/workspace/skills/advisor-lead-gen"\n`,
   );
 
   console.log(

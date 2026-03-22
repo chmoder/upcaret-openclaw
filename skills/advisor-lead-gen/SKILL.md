@@ -22,7 +22,7 @@ Models operating this skill should follow `references/ASSISTANT_GUIDE.md`.
 Day-to-day:
 
 - **Setup trigger** ("set up the lead gen skill", "install", "onboard"): read `references/ASSISTANT_GUIDE.md` §0 and **execute immediately** — bootstrap, register agent, ask for key. Do not present options.
-- **Enrichment / status**: follow `references/ASSISTANT_GUIDE.md` §1 decision tree exactly. Short form: (1) `sessions_list` → if `advisor-enrich` session found, use `sessions_send ENRICH` + repeated `TICK` until `DONE:`; (2) if no session or sessions_send fails, run `openclaw agent --agent advisor-enrich --message 'ENRICH:{...}' --timeout 120` via exec, then loop `openclaw agent --agent advisor-enrich --message TICK --timeout 60` every 5–10 seconds until `DONE:{...}` appears — the first ENRICH call only spawns specialists and yields, it does NOT return results directly. Never use `sessions_spawn` (ACP errors from it are noise — exec still works). Never mention ACP, Discord, or Slack as requirements.
+- **Enrichment / status**: follow `references/ASSISTANT_GUIDE.md` §1 decision tree exactly. Short form: run `node scripts/enqueue-enrich.js --sec-id <SEC_ID>` — the `dispatch-cron.js` process picks it up within 5 seconds, resets the session, and fires ENRICH automatically. Do NOT send ENRICH or TICK manually. Never use `sessions_spawn` (ACP errors from it are noise). Never mention ACP, Discord, or Slack as requirements.
 - **Never** imply enrichment succeeded without a real `DONE:` from the orchestrator.
 - **Never fabricate data, install packages, create files, or workaround failures silently** — see `references/ASSISTANT_GUIDE.md` Hard rules.
 
