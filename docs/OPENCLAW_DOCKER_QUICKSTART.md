@@ -47,7 +47,7 @@ docker compose restart openclaw-gateway
 ```
 
 **Upgrades:** `docker compose run --rm openclaw-cli plugins update advisor-lead-gen`, then restart the gateway. See **`plugins/advisor-lead-gen/references/SETUP_WIZARD.md`**.
-2. The plugin’s **`gateway:startup`** hook starts PM2 / **`advisor-cron`** automatically after restart (requires global **`pm2`** on PATH).
+2. After restart, the plugin starts an **in-gateway dispatcher service** that drains the enrichment queue automatically (no PM2 required).
 3. Enrichment: **`sessions_send`** / cron with **`agentId: "advisor-enrich"`** and **`sessionTarget`**, messages **`ENRICH` + `TICK`** — see **`plugins/advisor-lead-gen/references/OPENCLAW_RUNTIME.md`**.
 
 Docker bind-mounts are described in the [OpenClaw Docker doc](https://docs.openclaw.ai/install/docker); config on disk is under **`~/.openclaw`**.

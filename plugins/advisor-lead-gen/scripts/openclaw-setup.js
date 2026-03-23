@@ -172,18 +172,15 @@ function main() {
 
   // ── Step 4: Restart gateway ──────────────────────────────────────────────
   console.log(
-    "── Step 4: Restart gateway — activates plugin, auto-starts PM2 cron ──",
+    "── Step 4: Restart gateway — activates plugin dispatcher ──",
   );
   console.log("  openclaw gateway restart\n");
   console.log(
-    "  The plugin's gateway:startup hook fires on every restart and:",
+    "  On restart, the plugin starts an in-gateway dispatcher service that:",
   );
   console.log("    • validates Node version, required files, BRAVE_API_KEY");
   console.log("    • initialises DB schema (idempotent)");
-  console.log("    • starts advisor-cron via PM2 automatically\n");
-  console.log(
-    "  No manual PM2 steps needed — the plugin handles it on every boot.\n",
-  );
+  console.log("    • drains the enrichment queue (no PM2)\n");
 
   // ── Session / enrichment reference ──────────────────────────────────────
   const sessionKey = DEFAULT_SESSION_KEY;

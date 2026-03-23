@@ -16,11 +16,8 @@
  * the cron marks it 'failed' and resets the session so the next queued advisor
  * can proceed. The stale advisor can be re-queued manually.
  *
- * Managed by PM2 — use ecosystem.config.cjs (same on Docker, Linux, macOS, Windows):
- *   npm run cron:start      # pm2 start ecosystem.config.cjs
- *   npm run cron:stop       # pm2 stop advisor-cron  (sends SIGTERM)
- *   npm run cron:status     # pm2 status advisor-cron
- *   npm run cron:logs       # pm2 logs advisor-cron
+ * NOTE: In production this is not required.
+ * The OpenClaw plugin runs an in-gateway dispatcher service that drains the queue.
  *
  * Run directly for testing/debugging:
  *   node scripts/dispatch-cron.js --dry-run
@@ -175,7 +172,7 @@ async function main() {
   log(
     `dispatch-cron starting — poll every ${intervalSecs}s, stale after ${staleMinutes}min, agent=${AGENT_ID}${dryRun ? ", DRY-RUN" : ""}`,
   );
-  log(`Stop: pm2 stop advisor-cron  (or Ctrl+C when running directly)`);
+  log(`Stop: Ctrl+C`);
 
   // PM2 sends SIGTERM to stop; Ctrl+C sends SIGINT. Handle both cleanly.
   const shutdown = (signal) => { log(`${signal} — shutting down`); process.exit(0); };

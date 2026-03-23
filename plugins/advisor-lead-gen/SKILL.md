@@ -168,7 +168,7 @@ SEC download only:
 node scripts/extract-advisors.js --state NE --limit 50
 ```
 
-Queue one advisor for enrichment (dispatch-cron.js picks it up within 5s):
+Queue one advisor for enrichment (the in-gateway dispatcher picks it up within ~5s):
 
 ```bash
 node scripts/enqueue-enrich.js --sec-id 4167394
@@ -182,7 +182,6 @@ advisor-lead-gen/
 ├── IDENTITY.md              ← orchestrator system prompt (advisor-enrich agent)
 ├── ARCHITECTURE.md
 ├── package.json
-├── ecosystem.config.cjs     ← PM2 config for dispatch-cron
 ├── advisors.db              ← runtime data (not committed)
 ├── agents/
 │   ├── profile.md
@@ -199,7 +198,7 @@ advisor-lead-gen/
 ├── scripts/
 │   ├── extract-advisors.js
 │   ├── enqueue-enrich.js    ← queue one advisor for enrichment
-│   ├── dispatch-cron.js     ← long-running process that fires ENRICH
+│   ├── dispatch-cron.js     ← debug-only CLI poller (not used by the gateway)
 │   ├── record-enrichment.js
 │   ├── save-enrichment.js
 │   ├── reset-session.js
@@ -253,16 +252,11 @@ This skill uses **`node:sqlite`** — a built-in Node.js module available from N
 
 ### Queue is stuck / enrichment never starts
 
-The dispatch cron (`dispatch-cron.js`) is the only process that drains the queue. If `pm2 status` does not show `advisor-cron` as `online`, the queue will not move.
+The queue is drained by the plugin’s **in-gateway dispatcher service**. If a queued row never starts:
 
-Fix:
-```bash
-cd ~/.openclaw/extensions/advisor-lead-gen
-pm2 start ecosystem.config.cjs
-pm2 save
-```
-
-The plugin's `gateway:startup` hook does this automatically on every gateway restart. If the cron is still not running after a restart, check the gateway logs for `SETUP ERRORS` from the `advisor-lead-gen` plugin — they will list the exact fix command. If `pm2` is not on PATH, install it globally: `npm install -g pm2`, then restart the gateway.
+- Verify the plugin is enabled: `openclaw plugins list` should show `advisor-lead-gen` enabled.
+- Restart the gateway and check logs for `SETUP ERRORS` from `advisor-lead-gen` (missing `BRAVE_API_KEY`, missing files, DB init failures, etc.).
+- If a row is stuck in `running` for a long time, the dispatcher will mark it `failed` after the stale threshold and continue.
 
 ### Long-Running Jobs And Disconnected Sessions
 

@@ -13,7 +13,7 @@ After `openclaw plugins install`, OpenClaw places the plugin at:
 ~/.openclaw/extensions/advisor-lead-gen/
   SKILL.md          ← discovered via plugin manifest
   openclaw.plugin.json
-  plugin-entry.ts   ← gateway:startup hook (PM2 cron)
+  plugin-entry.ts   ← in-gateway dispatcher service (PM2-less)
   package.json
   scripts/
   agents/
@@ -89,49 +89,13 @@ This runs one turn of the advisor-enrich agent and creates its session. The sess
 
 Verify: run `sessions_list` from chat and confirm a session with `agentId: "advisor-enrich"` and key `agent:advisor-enrich:main` appears. If no session appears, repeat step 3.5 before proceeding.
 
-### 4. Dispatch cron (PM2)
+### 4. Queue dispatch (PM2-less)
 
-**Plugin installs:** after `openclaw gateway restart`, the plugin’s `gateway:startup` hook runs `pm2 start` for `advisor-cron` if needed (requires **`npm install -g pm2`** on the gateway host). Check gateway logs for `SETUP ERRORS` if the queue does not move.
+After `openclaw gateway restart`, the plugin starts an **in-gateway dispatcher service** that polls the SQLite queue and triggers the `advisor-enrich` agent **without PM2**.
 
-**Manual / recovery:** `dispatch-cron.js` is the **only** process that sends `ENRICH` to the `advisor-enrich` agent. `enqueue-enrich.js` only writes a DB row — the cron is what actually triggers the agent.
+If the queue does not move, check gateway logs for `SETUP ERRORS` from the `advisor-lead-gen` plugin.
 
-**PM2** is the process manager — same commands on Docker, Linux, macOS, and Windows.
-
-**① Install PM2 (one-time, global):**
-```bash
-npm install -g pm2
-# or via the skill: npm run cron:install
-```
-
-**② Start the cron:**
-```bash
-cd ~/.openclaw/extensions/advisor-lead-gen
-pm2 start ecosystem.config.cjs
-pm2 save
-# or via the skill: npm run cron:start && npm run cron:save
-```
-
-**③ Boot persistence (Linux/macOS, run once):**
-```bash
-pm2 startup    # prints a command — copy and run it as instructed
-pm2 save
-```
-
-**For Docker** (run inside the container where `openclaw` CLI lives):
-```bash
-docker exec <container> npm install -g pm2
-docker exec <container> sh -c "cd /home/node/.openclaw/extensions/advisor-lead-gen && pm2 start ecosystem.config.cjs && pm2 save"
-```
-
-**Useful PM2 commands:**
-```bash
-npm run cron:status    # is it running?
-npm run cron:logs      # tail logs
-npm run cron:restart   # restart after config changes
-npm run cron:stop      # stop cleanly
-```
-
-**To queue an advisor** (PM2-managed cron picks it up within 5s):
+**To queue an advisor** (dispatcher picks it up within ~5s):
 ```bash
 node scripts/enqueue-enrich.js --sec-id <SEC_ID>
 npm run enqueue -- --sec-id <SEC_ID>

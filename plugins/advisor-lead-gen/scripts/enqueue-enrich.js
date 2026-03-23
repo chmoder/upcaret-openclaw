@@ -5,13 +5,12 @@
  * Writes one enrichment_queue row for the given advisor. That is all this
  * script does — it does NOT send ENRICH to the agent.
  *
- * dispatch-cron.js is the only process that reads the queue and sends ENRICH
- * to the advisor-enrich agent via `openclaw agent`. Without dispatch-cron.js
- * running, queued rows are never processed.
+ * When the OpenClaw gateway is running with the advisor-lead-gen plugin enabled,
+ * the in-gateway dispatcher service will pick up queued rows automatically.
  *
  * Typical usage:
  *   node scripts/enqueue-enrich.js --sec-id 4167394
- *   # → QUEUED:4167394 (dispatch-cron.js picks it up within 5s)
+ *   # → QUEUED:4167394 (gateway dispatcher picks it up within a few seconds)
  *
  * Usage:
  *   node scripts/enqueue-enrich.js --sec-id <SEC_ID>

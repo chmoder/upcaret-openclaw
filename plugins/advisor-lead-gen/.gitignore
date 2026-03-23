@@ -2,3 +2,4 @@ node_modules/
 advisors.db
 .clawhub/
 *.log
+*.tgz
