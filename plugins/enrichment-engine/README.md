@@ -26,9 +26,8 @@ openclaw plugins install advisor-lead-gen   # example consumer
 openclaw plugins enable enrichment-engine
 openclaw plugins enable advisor-lead-gen
 #
-# If your domain pipeline uses many specialists via sessions_spawn (e.g. advisors uses 10),
-# raise the per-session active child cap to avoid spawn failures like:
-#   "gateway max active children limit reached (5/5)"
+# Required for advisor-lead-gen (10 specialists). Its initializer fails hard
+# if this is below 10.
 openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
 openclaw gateway restart
 ```

@@ -63,6 +63,8 @@ openclaw config set env.FIRECRAWL_API_KEY "<key-from-user>"
 ### 4) Restart gateway
 
 ```bash
+# Required for advisor enrichment (initializer fails hard if this is < 10):
+openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
 openclaw gateway restart
 ```
 
@@ -75,7 +77,7 @@ This starts:
 
 ```bash
 cd ~/.openclaw/extensions/advisor-lead-gen
-rm -f advisors.db
+rm -f ~/.openclaw/advisor-lead-gen/advisors.db
 npm run bootstrap
 npm run extract -- --state <STATE> --limit <N>
 ```
@@ -92,10 +94,11 @@ node scripts/enqueue-enrich.js --sec-id <SEC_ID>
 
 ## Runtime DBs
 
-- Domain DB: `advisors.db` (`entities`, `advisor_profiles`, `findings`)
+- Domain DB: `~/.openclaw/advisor-lead-gen/advisors.db` (`entities`, `advisor_profiles`, `findings`)
 - Engine DB: `enrichment.db` (`enrichment_jobs`, `enrichment_specialist_runs`, `enrichment_events`)
 
 By default `enrichment.db` path is `~/.openclaw/enrichment/enrichment.db` unless overridden with `ENRICHMENT_ENGINE_DB_PATH`.
+By default domain DB path is `~/.openclaw/advisor-lead-gen/advisors.db` unless overridden with `ADVISOR_DOMAIN_DB_PATH`.
 
 ---
 

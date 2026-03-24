@@ -29,8 +29,8 @@ openclaw plugins enable advisor-lead-gen
 # Set BRAVE_API_KEY: Settings → Environment variables, or openclaw config set env.BRAVE_API_KEY "<key>"
 # Optional (if your gateway uses Firecrawl for web_fetch): openclaw config set env.FIRECRAWL_API_KEY "<fc-key>"
 #
-# Required for advisor enrichment (10 specialists):
-# Without this you may see: "gateway max active children limit reached (5/5)"
+# Required for advisor enrichment (10 specialists).
+# The advisor initializer now fails hard at startup if this is < 10.
 openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
 # Optional override if you do NOT want the default DB location:
 # openclaw config set env.ADVISOR_DOMAIN_DB_PATH "/absolute/path/to/advisors.db"
@@ -53,8 +53,9 @@ npm run extract -- --state <STATE> --limit <N>
 
 - Default: `~/.openclaw/advisor-lead-gen/advisors.db`
 - Explicit override: set `env.ADVISOR_DOMAIN_DB_PATH` in OpenClaw config (for example, `plugins/advisor-lead-gen/advisors.db` during local development)
+- Hard cut: the old extension-local path `~/.openclaw/extensions/advisor-lead-gen/advisors.db` is no longer used as a fallback.
 
-All domain scripts (`bootstrap`, `extract`, `enqueue`, `feed`, `next-advisor`, `status-dashboard`, `save-enrichment`) now resolve the DB path the same way, so extraction and enrichment writes stay in sync.
+All domain scripts and the advisor initializer now resolve/init the same domain DB path, so extraction and enrichment writes stay in sync.
 
 In chat: **"set up the lead gen skill"** — the agent follows `references/SETUP_WIZARD.md`.
 

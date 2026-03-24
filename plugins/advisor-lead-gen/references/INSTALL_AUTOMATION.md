@@ -28,7 +28,10 @@ openclaw config set env.BRAVE_API_KEY "<your-brave-search-api-key>"
 # 3) Ensure orchestrator agent exists
 openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen
 
-# 4) Restart gateway (starts engine dispatcher + advisor initializer)
+# 4) Required for advisor enrichment (initializer fails hard if this is < 10)
+openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
+
+# 5) Restart gateway (starts engine dispatcher + advisor initializer)
 openclaw gateway restart
 ```
 
@@ -44,17 +47,18 @@ The old advisor schema is not migrated in-place. Rebuild by re-extracting SEC da
 
 ```bash
 cd ~/.openclaw/extensions/advisor-lead-gen
-rm -f advisors.db
+rm -f ~/.openclaw/advisor-lead-gen/advisors.db
 npm run bootstrap
 npm run extract -- --state <STATE> --limit <N>
 ```
 
 ## Runtime DB split
 
-- **Domain DB**: `advisors.db` (SEC + normalized findings + latest summary fields on `entities`).
+- **Domain DB**: `~/.openclaw/advisor-lead-gen/advisors.db` (SEC + normalized findings + latest summary fields on `entities`).
 - **Engine DB**: `enrichment.db` (jobs, specialist runs, events, queue state/history).
 
 By default `enrichment.db` resolves to `~/.openclaw/enrichment/enrichment.db` unless `ENRICHMENT_ENGINE_DB_PATH` is set.
+By default domain DB resolves to `~/.openclaw/advisor-lead-gen/advisors.db` unless `ADVISOR_DOMAIN_DB_PATH` is set.
 
 ## Queueing advisors
 

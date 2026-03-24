@@ -39,9 +39,25 @@ const entry = {
       const { initSchema } = await import(
         pathToFileURL(join(ROOT, "scripts/db-init.js")).href
       );
-      const db = openDb(join(ROOT, "advisors.db"));
+      const db = openDb();
       initSchema(db);
       db.close();
+    }
+
+    async function ensureAdvisorPipelineRow() {
+      const {
+        openEngineDb,
+        resolveEngineDbPath,
+        initEngineSchema,
+        ensureAdvisorPipeline,
+      } = await import(pathToFileURL(join(ROOT, "scripts/engine-db.js")).href);
+      const engineDb = openEngineDb(resolveEngineDbPath());
+      try {
+        initEngineSchema(engineDb);
+        ensureAdvisorPipeline(engineDb);
+      } finally {
+        engineDb.close();
+      }
     }
 
     async function ensureAdvisorEnrichAgentConfig(cfg: any) {
@@ -108,6 +124,15 @@ const entry = {
         );
       }
 
+      const maxChildren = Number(
+        cfg?.agents?.defaults?.subagents?.maxChildrenPerAgent ?? 5,
+      );
+      if (!Number.isFinite(maxChildren) || maxChildren < 10) {
+        errors.push(
+          "agents.defaults.subagents.maxChildrenPerAgent must be >= 10 for advisor enrichment (10 specialists). Fix: openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12 && openclaw gateway restart",
+        );
+      }
+
       return errors;
     }
 
@@ -134,6 +159,16 @@ const entry = {
         } catch (err: any) {
           log.error(
             `DB init failed: ${String(err?.message ?? err)} — run: cd ${ROOT} && npm run bootstrap`,
+          );
+          return;
+        }
+
+        // Ensure advisors pipeline row exists in engine DB before any enqueue.
+        try {
+          await ensureAdvisorPipelineRow();
+        } catch (err: any) {
+          log.error(
+            `Pipeline init failed: ${String(err?.message ?? err)} — run: cd ${ROOT} && npm run bootstrap`,
           );
           return;
         }
