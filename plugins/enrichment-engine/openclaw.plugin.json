@@ -1,6 +1,6 @@
 {
   "id": "enrichment-engine",
-  "name": "OpenClaw Enrichment Engine",
+  "name": "upCaret Enrichment Engine",
   "description": "Generic queue dispatcher for enrichment pipelines.",
   "version": "0.1.0",
   "configSchema": {

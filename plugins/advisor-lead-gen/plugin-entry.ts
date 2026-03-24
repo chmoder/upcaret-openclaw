@@ -17,7 +17,7 @@ try {
 
 const entry = {
   id: "advisor-lead-gen",
-  name: "SEC IAPD Advisor Lead Gen",
+  name: "upCaret Advisor Lead Gen",
   description: "Advisor domain plugin (SEC IAPD data + orchestration assets)",
   register(api: any) {
     const ROOT = join(

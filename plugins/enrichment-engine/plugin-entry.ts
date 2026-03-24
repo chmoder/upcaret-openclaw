@@ -6,28 +6,39 @@ import { pathToFileURL } from "node:url";
 let definePluginEntry: undefined | ((entry: any) => any);
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  definePluginEntry = require("openclaw/plugin-sdk/plugin-entry")?.definePluginEntry;
+  definePluginEntry =
+    require("openclaw/plugin-sdk/plugin-entry")?.definePluginEntry;
 } catch {}
 
 const entry = {
   id: "enrichment-engine",
-  name: "OpenClaw Enrichment Engine",
+  name: "upCaret Enrichment Engine",
   description: "Generic queue dispatcher for enrichment pipelines",
   register(api: any) {
     const stateDir = api.runtime.state.resolveStateDir();
     const ROOT = join(stateDir, "extensions", "enrichment-engine");
     const log = api.logger;
 
-    const POLL_INTERVAL_MS = Number.parseInt(process.env.ENRICH_ENGINE_INTERVAL_MS || "", 10);
-    const STALE_MINUTES = Number.parseInt(process.env.ENRICH_ENGINE_STALE_MINUTES || "", 10);
+    const POLL_INTERVAL_MS = Number.parseInt(
+      process.env.ENRICH_ENGINE_INTERVAL_MS || "",
+      10,
+    );
+    const STALE_MINUTES = Number.parseInt(
+      process.env.ENRICH_ENGINE_STALE_MINUTES || "",
+      10,
+    );
 
     const pollMs =
-      Number.isFinite(POLL_INTERVAL_MS) && POLL_INTERVAL_MS > 0 ? POLL_INTERVAL_MS : 5_000;
+      Number.isFinite(POLL_INTERVAL_MS) && POLL_INTERVAL_MS > 0
+        ? POLL_INTERVAL_MS
+        : 5_000;
     // Wall-clock cap for a single job in `running` (aligned with DB default
     // `enrichment_pipelines.stale_minutes` and README). Advisor enrichment uses
     // ~90s specialist budgets; five minutes total is plenty — beyond that mark failed.
     const staleMs =
-      Number.isFinite(STALE_MINUTES) && STALE_MINUTES > 0 ? STALE_MINUTES * 60_000 : 5 * 60_000;
+      Number.isFinite(STALE_MINUTES) && STALE_MINUTES > 0
+        ? STALE_MINUTES * 60_000
+        : 5 * 60_000;
     const engineDbPath =
       process.env.ENRICHMENT_ENGINE_DB_PATH ||
       join(api.runtime.state.resolveStateDir(), "enrichment", "enrichment.db");
@@ -48,15 +59,21 @@ const entry = {
     async function openEngineDb() {
       const dir = join(engineDbPath, "..");
       fs.mkdirSync(dir, { recursive: true });
-      const { openDb } = await import(pathToFileURL(join(ROOT, "scripts/db.js")).href);
-      const { initSchema } = await import(pathToFileURL(join(ROOT, "scripts/db-init.js")).href);
+      const { openDb } = await import(
+        pathToFileURL(join(ROOT, "scripts/db.js")).href
+      );
+      const { initSchema } = await import(
+        pathToFileURL(join(ROOT, "scripts/db-init.js")).href
+      );
       const db = openDb(engineDbPath);
       initSchema(db);
       return db;
     }
 
     async function getQueueState(db: any) {
-      const { dbGet } = await import(pathToFileURL(join(ROOT, "scripts/db.js")).href);
+      const { dbGet } = await import(
+        pathToFileURL(join(ROOT, "scripts/db.js")).href
+      );
       const running = dbGet(
         db,
         `SELECT j.job_id, j.pipeline_id, j.entity_type, j.entity_id, j.started_at,
@@ -151,10 +168,16 @@ const entry = {
 
     async function markRunning(db: any, jobId: string) {
       const alreadyRunning = db
-        .prepare(`SELECT job_id FROM enrichment_jobs WHERE status='running' AND job_id != ? LIMIT 1`)
+        .prepare(
+          `SELECT job_id FROM enrichment_jobs WHERE status='running' AND job_id != ? LIMIT 1`,
+        )
         .get(jobId);
       if (alreadyRunning?.job_id) {
-        return { ok: false as const, reason: "another_running" as const, jobId: alreadyRunning.job_id };
+        return {
+          ok: false as const,
+          reason: "another_running" as const,
+          jobId: alreadyRunning.job_id,
+        };
       }
       const res = db
         .prepare(
@@ -168,13 +191,19 @@ const entry = {
       return { ok: res.changes > 0 };
     }
 
-    async function ensureAgentConfig(cfg: any, agentId: string, workspacePath: string) {
+    async function ensureAgentConfig(
+      cfg: any,
+      agentId: string,
+      workspacePath: string,
+    ) {
       const wanted = normalizeAgentId(agentId);
       if (!wanted) {
         return cfg;
       }
       const list = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
-      const exists = list.some((a: any) => normalizeAgentId(String(a?.id || "")) === wanted);
+      const exists = list.some(
+        (a: any) => normalizeAgentId(String(a?.id || "")) === wanted,
+      );
       if (exists) {
         return cfg;
       }
@@ -197,13 +226,17 @@ const entry = {
         await api.runtime.config.writeConfigFile(patched);
         log.info(`Configured agent "${agentId}" workspace=${workspacePath}`);
       } catch (err: any) {
-        log.warn(`WARN — unable to persist agent config: ${String(err?.message ?? err)}`);
+        log.warn(
+          `WARN — unable to persist agent config: ${String(err?.message ?? err)}`,
+        );
       }
       return patched;
     }
 
     function shouldResetSessionForPipeline(pipelineId: string) {
-      const mode = String(process.env.ENRICH_ENGINE_SESSION_RESET_MODE || "").trim().toLowerCase();
+      const mode = String(process.env.ENRICH_ENGINE_SESSION_RESET_MODE || "")
+        .trim()
+        .toLowerCase();
       if (mode === "always") return true;
       if (mode === "never") return false;
       // Default: reset before every newly dispatched entity/job.
@@ -222,7 +255,9 @@ const entry = {
         try {
           const files = fs.readdirSync(sessionsDir);
           if (files.some((f) => f.endsWith(".lock"))) {
-            log.warn(`SESSION RESET SKIP — lock file present for agent=${agentId}`);
+            log.warn(
+              `SESSION RESET SKIP — lock file present for agent=${agentId}`,
+            );
             return { ok: false as const, reason: "lock_present" as const };
           }
         } catch {}
@@ -258,7 +293,8 @@ const entry = {
       entityType: string;
       entityId: string;
     }) {
-      const configPath = process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json");
+      const configPath =
+        process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json");
       return {
         ...process.env,
         OPENCLAW_STATE_DIR: stateDir,
@@ -295,7 +331,13 @@ const entry = {
     ): number {
       const aid = String(agentId || "").trim();
       if (!aid) return 0;
-      const sessionsJsonPath = join(stateDir, "agents", aid, "sessions", "sessions.json");
+      const sessionsJsonPath = join(
+        stateDir,
+        "agents",
+        aid,
+        "sessions",
+        "sessions.json",
+      );
       if (!existsSync(sessionsJsonPath)) return 0;
       let map: Record<string, any>;
       try {
@@ -340,10 +382,15 @@ const entry = {
       entityType: string;
       entityId: string;
     }) {
-      const configPath = process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json");
-      const prefix = String(params.messagePrefix || "ENRICH").trim() || "ENRICH";
+      const configPath =
+        process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json");
+      const prefix =
+        String(params.messagePrefix || "ENRICH").trim() || "ENRICH";
       const message = `${prefix}:${params.payloadJson}`;
-      const agentTimeoutSeconds = Math.max(300, Math.ceil((staleMs + 60_000) / 1000));
+      const agentTimeoutSeconds = Math.max(
+        300,
+        Math.ceil((staleMs + 60_000) / 1000),
+      );
       const argv = [
         "openclaw",
         "agent",
@@ -391,17 +438,29 @@ const entry = {
       entityType: string;
       entityId: string;
     }) {
-      const configPath = process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json");
-      const turnSecRaw = Number.parseInt(process.env.ENRICH_ADVISOR_TURN_TIMEOUT_SEC || "", 10);
+      const configPath =
+        process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json");
+      const turnSecRaw = Number.parseInt(
+        process.env.ENRICH_ADVISOR_TURN_TIMEOUT_SEC || "",
+        10,
+      );
       const turnSec =
         Number.isFinite(turnSecRaw) && turnSecRaw >= 60 ? turnSecRaw : 300;
-      const maxTicksRaw = Number.parseInt(process.env.ENRICH_ADVISOR_MAX_TICKS || "", 10);
-      const maxTicks = Number.isFinite(maxTicksRaw) && maxTicksRaw > 0 ? maxTicksRaw : 40;
-      const pauseMsRaw = Number.parseInt(process.env.ENRICH_ADVISOR_TICK_PAUSE_MS || "", 10);
+      const maxTicksRaw = Number.parseInt(
+        process.env.ENRICH_ADVISOR_MAX_TICKS || "",
+        10,
+      );
+      const maxTicks =
+        Number.isFinite(maxTicksRaw) && maxTicksRaw > 0 ? maxTicksRaw : 40;
+      const pauseMsRaw = Number.parseInt(
+        process.env.ENRICH_ADVISOR_TICK_PAUSE_MS || "",
+        10,
+      );
       const pauseMs =
         Number.isFinite(pauseMsRaw) && pauseMsRaw >= 0 ? pauseMsRaw : 4_000;
 
-      const enrichPrefix = String(params.messagePrefix || "ENRICH").trim() || "ENRICH";
+      const enrichPrefix =
+        String(params.messagePrefix || "ENRICH").trim() || "ENRICH";
       const payload = String(params.payloadJson || "");
       const env = agentRunEnv(params);
 
@@ -486,19 +545,32 @@ const entry = {
             completeStdout += String(r?.stdout ?? "");
           }
 
-          if (enrichStdout.includes("DONE:") || completeStdout.includes("DONE:")) {
+          if (
+            enrichStdout.includes("DONE:") ||
+            completeStdout.includes("DONE:")
+          ) {
             return { ok: true as const };
           }
 
-          if (phase === "enrich" && enrichStdout.includes("ALL_SPECIALISTS_DONE:")) {
-            log.info(`ADVISORS — job=${params.jobId} ALL_SPECIALISTS_DONE: switching to COMPLETE`);
+          if (
+            phase === "enrich" &&
+            enrichStdout.includes("ALL_SPECIALISTS_DONE:")
+          ) {
+            log.info(
+              `ADVISORS — job=${params.jobId} ALL_SPECIALISTS_DONE: switching to COMPLETE`,
+            );
             await resetSessionBestEffort(params.agentId);
             // Give the filesystem a moment to settle before next phase.
             await new Promise((res) => setTimeout(res, 2_000));
             phase = "complete";
             completeStdout = "";
-          } else if (phase === "complete" && completeStdout.includes("SCORE_SPAWNED:")) {
-            log.info(`ADVISORS — job=${params.jobId} SCORE_SPAWNED: switching to COMPLETE_TICK`);
+          } else if (
+            phase === "complete" &&
+            completeStdout.includes("SCORE_SPAWNED:")
+          ) {
+            log.info(
+              `ADVISORS — job=${params.jobId} SCORE_SPAWNED: switching to COMPLETE_TICK`,
+            );
             phase = "complete_tick";
           }
 
@@ -520,7 +592,10 @@ const entry = {
           }
 
           if (r?.code !== 0 && i === maxTicks - 1) {
-            return { ok: false as const, error: formatAgentFailure(params.jobId, r) };
+            return {
+              ok: false as const,
+              error: formatAgentFailure(params.jobId, r),
+            };
           }
           if (r?.code !== 0) {
             log.warn(
@@ -575,7 +650,9 @@ const entry = {
       id: "enrichment-engine-dispatcher",
       start: async () => {
         if (interval) {
-          log.warn("enrichment-engine dispatcher already running (start ignored)");
+          log.warn(
+            "enrichment-engine dispatcher already running (start ignored)",
+          );
           return;
         }
 
@@ -587,14 +664,18 @@ const entry = {
         }
 
         try {
-          await fs.promises.mkdir(join(engineDbPath, ".."), { recursive: true });
+          await fs.promises.mkdir(join(engineDbPath, ".."), {
+            recursive: true,
+          });
           const db = await openEngineDb();
           try {
             // On startup, any job stuck in 'running' is orphaned — no process from a
             // previous gateway instance is still handling it. Mark them failed immediately
             // rather than waiting for the stale timeout.
             const orphaned = db
-              .prepare(`SELECT job_id FROM enrichment_jobs WHERE status='running'`)
+              .prepare(
+                `SELECT job_id FROM enrichment_jobs WHERE status='running'`,
+              )
               .all();
             for (const row of orphaned) {
               await requeueRunning(db, String(row.job_id), "gateway restarted");
@@ -611,17 +692,23 @@ const entry = {
         }
 
         try {
-          await api.runtime.system.runCommandWithTimeout(["openclaw", "--version"], {
-            timeoutMs: 2_000,
-            env: {
-              ...process.env,
-              OPENCLAW_STATE_DIR: stateDir,
-              OPENCLAW_CONFIG_PATH:
-                process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json"),
+          await api.runtime.system.runCommandWithTimeout(
+            ["openclaw", "--version"],
+            {
+              timeoutMs: 2_000,
+              env: {
+                ...process.env,
+                OPENCLAW_STATE_DIR: stateDir,
+                OPENCLAW_CONFIG_PATH:
+                  process.env.OPENCLAW_CONFIG_PATH ||
+                  join(stateDir, "openclaw.json"),
+              },
             },
-          });
+          );
         } catch (err: any) {
-          log.error(`OpenClaw CLI is not available for dispatch: ${String(err?.message ?? err)}`);
+          log.error(
+            `OpenClaw CLI is not available for dispatch: ${String(err?.message ?? err)}`,
+          );
           return;
         }
 
@@ -639,8 +726,11 @@ const entry = {
               db = await openEngineDb();
               const state = await getQueueState(db);
               if (state.state === "running") {
-                const isAdvisors = String(state.row.pipeline_id || "") === "advisors";
-                const runningAgentId = String(state.row.orchestrator_agent_id || "").trim();
+                const isAdvisors =
+                  String(state.row.pipeline_id || "") === "advisors";
+                const runningAgentId = String(
+                  state.row.orchestrator_agent_id || "",
+                ).trim();
                 if (isAdvisors && runningAgentId) {
                   const n = reconcilePendingSpecialistsFromSessions(
                     db,
@@ -667,7 +757,9 @@ const entry = {
                   // We can't reliably kill the in-flight process here, but we can allow
                   // the dispatcher to proceed to the next queued job.
                   if (activeRun?.jobId === String(state.row.job_id)) {
-                    log.warn(`STALE — clearing activeRun for job=${state.row.job_id}`);
+                    log.warn(
+                      `STALE — clearing activeRun for job=${state.row.job_id}`,
+                    );
                     activeRun = null;
                     dispatchCooldownUntilMs = Date.now() + 5_000;
                   }
@@ -687,12 +779,18 @@ const entry = {
                 const jobId = String(row.job_id);
                 const agentId = String(row.orchestrator_agent_id || "").trim();
                 if (!agentId) {
-                  await failQueuedOrRunning(db, jobId, "missing orchestrator_agent_id");
+                  await failQueuedOrRunning(
+                    db,
+                    jobId,
+                    "missing orchestrator_agent_id",
+                  );
                   return;
                 }
 
                 const cfg0 = api.runtime.config.loadConfig();
-                const configuredWorkspace = String(row.orchestrator_workspace || "").trim();
+                const configuredWorkspace = String(
+                  row.orchestrator_workspace || "",
+                ).trim();
                 if (configuredWorkspace) {
                   await ensureAgentConfig(cfg0, agentId, configuredWorkspace);
                 } else {
@@ -700,7 +798,9 @@ const entry = {
                     `No orchestrator_workspace configured for pipeline=${row.pipeline_id}; skipping auto agent config for agent=${agentId}`,
                   );
                 }
-                if (shouldResetSessionForPipeline(String(row.pipeline_id || ""))) {
+                if (
+                  shouldResetSessionForPipeline(String(row.pipeline_id || ""))
+                ) {
                   const reset = await resetSessionBestEffort(agentId);
                   if (reset.ok && reset.reason === "reset") {
                     db.prepare(
@@ -768,7 +868,11 @@ const entry = {
                     }
                     const db2 = await openEngineDb();
                     try {
-                      await markFailed(db2, jobId, String(result.error).slice(0, 1000));
+                      await markFailed(
+                        db2,
+                        jobId,
+                        String(result.error).slice(0, 1000),
+                      );
                     } finally {
                       db2.close();
                     }
@@ -809,4 +913,6 @@ const entry = {
   },
 };
 
-export default typeof definePluginEntry === "function" ? definePluginEntry(entry) : entry;
+export default typeof definePluginEntry === "function"
+  ? definePluginEntry(entry)
+  : entry;

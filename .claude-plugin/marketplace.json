@@ -5,7 +5,7 @@
     {
       "name": "enrichment-engine",
       "version": "0.1.0",
-      "description": "Generic enrichment queue dispatcher (proprietary)",
+      "description": "upCaret Enrichment Engine (proprietary)",
       "source": {
         "type": "path",
         "path": "plugins/enrichment-engine"
@@ -14,7 +14,7 @@
     {
       "name": "advisor-lead-gen",
       "version": "3.1.0",
-      "description": "SEC IAPD Advisor Lead Gen (proprietary)",
+      "description": "upCaret Advisor Lead Gen (proprietary)",
       "source": {
         "type": "path",
         "path": "plugins/advisor-lead-gen"
