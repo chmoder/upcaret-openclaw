@@ -5,7 +5,7 @@ Generic job queue dispatcher for OpenClaw enrichment pipelines.
 ## What it does
 
 - Owns and initialises `enrichment.db` — a SQLite job queue (`enrichment_pipelines`, `enrichment_jobs`, `enrichment_specialist_runs`, `enrichment_events`).
-- Runs a poll-loop dispatcher service inside the gateway that picks up `queued` jobs, resets the target agent session, spawns `openclaw agent --local --message <PREFIX>:<payload>`, and handles stale and failed runs automatically.
+- Runs a poll-loop dispatcher service inside the gateway that picks up `queued` jobs, resets the target agent session, spawns `openclaw agent --message <PREFIX>:<payload>`, and handles stale and failed runs automatically.
 - Recovers orphaned `running` jobs on gateway restart.
 - Skips dispatch for pipelines with `enabled = 0`.
 

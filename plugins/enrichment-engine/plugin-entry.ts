@@ -272,15 +272,6 @@ const entry = {
       };
     }
 
-    function shouldUseLocalAgentExec() {
-      // Historically we used `openclaw agent --local` from inside the gateway plugin.
-      // In practice this can increase session-writer contention (multiple local runners
-      // competing on the same agent session JSONL lock). Default to gateway execution
-      // unless explicitly requested.
-      const mode = String(process.env.ENRICH_ENGINE_AGENT_EXEC_MODE || "").trim().toLowerCase();
-      return mode === "local";
-    }
-
     function formatAgentFailure(jobId: string, r: any) {
       const stdout = String(r?.stdout ?? "").trim();
       const stderr = String(r?.stderr ?? "").trim();
@@ -353,11 +344,9 @@ const entry = {
       const prefix = String(params.messagePrefix || "ENRICH").trim() || "ENRICH";
       const message = `${prefix}:${params.payloadJson}`;
       const agentTimeoutSeconds = Math.max(300, Math.ceil((staleMs + 60_000) / 1000));
-      const useLocal = shouldUseLocalAgentExec();
       const argv = [
         "openclaw",
         "agent",
-        ...(useLocal ? ["--local"] : []),
         "--agent",
         params.agentId,
         "--message",
@@ -415,7 +404,6 @@ const entry = {
       const enrichPrefix = String(params.messagePrefix || "ENRICH").trim() || "ENRICH";
       const payload = String(params.payloadJson || "");
       const env = agentRunEnv(params);
-      const useLocal = shouldUseLocalAgentExec();
 
       const runPromise = (async () => {
         type Phase = "enrich" | "complete" | "complete_tick";
@@ -481,7 +469,6 @@ const entry = {
           const argv = [
             "openclaw",
             "agent",
-            ...(useLocal ? ["--local"] : []),
             "--agent",
             params.agentId,
             "--message",
