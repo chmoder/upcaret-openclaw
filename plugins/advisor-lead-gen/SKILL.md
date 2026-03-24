@@ -19,11 +19,11 @@ This plugin provides two capabilities:
 
 Models operating this skill should follow `references/ASSISTANT_GUIDE.md`.
 
-**Install:** `openclaw plugins install enrichment-engine` first, then `openclaw plugins install advisor-lead-gen` (or say **"set up the lead gen skill"** in chat). If `enrichment-engine` is not published in the user’s marketplace/registry, install it from an artifact/path instead (same end state). `enrichment-engine` must be enabled before this plugin — it owns the job queue and dispatcher. The advisor plugin registers `SKILL.md` automatically — no copy to `workspace/skills/` needed. The main agent follows **`references/SETUP_WIZARD.md`** — register `advisor-enrich` (workspace = `~/.openclaw/extensions/advisor-lead-gen/`), restart gateway, and rebuild `advisors.db` (breaking schema change). Full packaging checklist: **`references/DISTRIBUTION.md`**.
+**Install:** `openclaw plugins install enrichment-engine` first, then `openclaw plugins install advisor-lead-gen` (or say **"set up the lead gen skill"** in chat). If `enrichment-engine` is not published in the user’s marketplace/registry, install it from an artifact/path instead (same end state). `enrichment-engine` must be enabled before this plugin — it owns the job queue and dispatcher. The advisor plugin registers `SKILL.md` automatically — no copy to `workspace/skills/` needed. The main agent follows **`references/SETUP_WIZARD.md`** — agent registration is automatic, then restart gateway and rebuild `advisors.db` (breaking schema change). Full packaging checklist: **`references/DISTRIBUTION.md`**.
 
 Day-to-day:
 
-- **Setup trigger** ("set up the lead gen skill", "install", "onboard"): read `references/ASSISTANT_GUIDE.md` §0 and **execute immediately** — bootstrap, register agent, restart gateway. Do not present options.
+- **Setup trigger** ("set up the lead gen skill", "install", "onboard"): read `references/ASSISTANT_GUIDE.md` §0 and **execute immediately** — install/enable plugins, set required env, restart gateway. Do not present options.
 - **Enrichment / status**: follow `references/ASSISTANT_GUIDE.md` §1 decision tree exactly. Short form: run `node scripts/enqueue-enrich.js --sec-id <SEC_ID>` — this writes an engine job into `enrichment.db` and the `enrichment-engine` plugin dispatches it within a few seconds. Do NOT send ENRICH or TICK manually.
 - **Never** imply enrichment succeeded without a real `DONE:` from the orchestrator.
 - **Never fabricate data, install packages, create files, or workaround failures silently** — see `references/ASSISTANT_GUIDE.md` Hard rules.
@@ -32,9 +32,8 @@ Day-to-day:
 
 1. Install both plugins: `openclaw plugins install enrichment-engine` and `openclaw plugins install advisor-lead-gen` (or install `enrichment-engine` from an artifact/path if it is not published yet).
 2. Enable both plugins: `openclaw plugins enable enrichment-engine` and `openclaw plugins enable advisor-lead-gen`
-3. Create the orchestrator agent: `openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen`
-4. Restart the gateway: `openclaw gateway restart` — engine dispatcher becomes live.
-5. Rebuild domain DB and preload SEC advisors: `rm -f advisors.db && npm run bootstrap && npm run extract -- --state <STATE> --limit <N>`.
+3. Restart the gateway: `openclaw gateway restart` — engine dispatcher becomes live.
+4. Rebuild domain DB and preload SEC advisors: `rm -f ~/.openclaw/advisor-lead-gen/advisors.db && npm run extract -- --state <STATE> --limit <N>`.
 
 For the full operator boundary, read `references/INSTALL_AUTOMATION.md`.
 

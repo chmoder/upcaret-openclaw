@@ -60,6 +60,30 @@ const entry = {
       }
     }
 
+    async function ensureSubagentChildrenLimit(cfg: any) {
+      const current = Number(
+        cfg?.agents?.defaults?.subagents?.maxChildrenPerAgent ?? 5,
+      );
+      if (Number.isFinite(current) && current >= 10) {
+        return { applied: false as const, cfg };
+      }
+      const patched = {
+        ...cfg,
+        agents: {
+          ...(cfg?.agents ?? {}),
+          defaults: {
+            ...(cfg?.agents?.defaults ?? {}),
+            subagents: {
+              ...(cfg?.agents?.defaults?.subagents ?? {}),
+              maxChildrenPerAgent: 12,
+            },
+          },
+        },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      return { applied: true as const, cfg: patched };
+    }
+
     async function ensureAdvisorEnrichAgentConfig(cfg: any) {
       const wanted = normalizeAgentId(ORCH_AGENT_ID);
       const list = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
@@ -120,7 +144,7 @@ const entry = {
       ).trim();
       if (!braveKey) {
         errors.push(
-          "BRAVE_API_KEY missing. Add it under OpenClaw Settings → Environment variables (stored as config `env.BRAVE_API_KEY`), or run: openclaw config set env.BRAVE_API_KEY \"<key>\"",
+          'BRAVE_API_KEY missing. Add it under OpenClaw Settings → Environment variables (stored as config `env.BRAVE_API_KEY`), or run: openclaw config set env.BRAVE_API_KEY "<key>"',
         );
       }
 
@@ -144,6 +168,20 @@ const entry = {
           cfgForValidate = api.runtime.config.loadConfig() ?? {};
         } catch {
           cfgForValidate = {};
+        }
+        try {
+          const out = await ensureSubagentChildrenLimit(cfgForValidate);
+          cfgForValidate = out.cfg;
+          if (out.applied) {
+            log.error(
+              "Applied agents.defaults.subagents.maxChildrenPerAgent=12 automatically for advisor enrichment. Restart gateway to apply.",
+            );
+            return;
+          }
+        } catch (err: any) {
+          log.warn(
+            `WARN — unable to auto-apply maxChildrenPerAgent: ${String(err?.message ?? err)}`,
+          );
         }
         const errors = validateSetup(cfgForValidate);
         if (errors.length > 0) {
@@ -206,8 +244,6 @@ const entry = {
           );
           return;
         }
-
-
 
         log.info(
           `advisor-lead-gen initialized (agent=${ORCH_AGENT_ID}). Queue dispatch is owned by enrichment-engine.`,

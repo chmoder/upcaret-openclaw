@@ -25,12 +25,12 @@ Triggers include: **set up the lead gen skill**, **install advisor-lead-gen**, *
 
 **Do not ask "which option?" or present a menu. Execute immediately.**
 
-Say something like: "Found the skill — running bootstrap and setup now." Then proceed through steps 1–4 below without waiting for the user to choose.
+Say something like: "Found the skill — running setup now." Then proceed through steps 1–3 below without waiting for the user to choose.
 
 **One install location:** `~/.openclaw/extensions/advisor-lead-gen/` (container: `/home/node/.openclaw/extensions/advisor-lead-gen/`). The `advisor-enrich` agent's `--workspace` points here. No separate directory needed.
 
-1. Run `npm run bootstrap` via **exec** (cwd = skill dir). Report pass/fail.
-2. Install + enable both plugins (gateway host): `openclaw plugins install enrichment-engine && openclaw plugins install advisor-lead-gen && openclaw plugins enable enrichment-engine && openclaw plugins enable advisor-lead-gen`. If `enrichment-engine` is not published in the user’s marketplace/registry yet, install it from an artifact/path instead.
+1. Install + enable both plugins (gateway host): `openclaw plugins install enrichment-engine && openclaw plugins install advisor-lead-gen && openclaw plugins enable enrichment-engine && openclaw plugins enable advisor-lead-gen`. If `enrichment-engine` is not published in the user’s marketplace/registry yet, install it from an artifact/path instead.
+2. Ensure required env is set: `openclaw config set env.BRAVE_API_KEY "<key>"`.
 3. Restart the gateway so the engine dispatcher starts: `openclaw gateway restart`.
 
 If exec is unavailable, skip to **`SETUP_WIZARD.md`** Fallback block and give the user exact copy-paste commands — still no menu.
@@ -123,7 +123,7 @@ When OpenClaw **cannot** create agents, set gateway env, or copy files:
 Give a **short, numbered** list. Do not use vague “configure the server.” Prefer:
 
 1. On the **gateway host** where OpenClaw runs, open a terminal in the skill directory (or path where `advisor-lead-gen` was installed).
-2. Run **`npm run bootstrap`**, then follow `references/INSTALL_AUTOMATION.md` (install/enable plugins, restart gateway).
+2. Follow `references/INSTALL_AUTOMATION.md` (install/enable plugins, set env, restart gateway).
 3. Restart or reload the gateway if your install requires it after config changes.
 4. Return to chat and ask again — you will **`sessions_list`** / **`sessions_send`** as in section 1.
 

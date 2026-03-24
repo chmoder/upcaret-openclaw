@@ -30,22 +30,21 @@ openclaw plugins enable advisor-lead-gen
 # Optional (if your gateway uses Firecrawl for web_fetch): openclaw config set env.FIRECRAWL_API_KEY "<fc-key>"
 #
 # Required for advisor enrichment (10 specialists).
-# The advisor initializer now fails hard at startup if this is < 10.
+# If this is below 10, initializer auto-sets it to 12.
+# Startup fails only if that auto-remediation cannot be persisted.
 openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
 # Optional override if you do NOT want the default DB location:
 # openclaw config set env.ADVISOR_DOMAIN_DB_PATH "/absolute/path/to/advisors.db"
-openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen
 openclaw gateway restart
 ```
 
+`advisor-enrich` agent registration is automatic at startup; no manual `openclaw agents add ...` is required.
+
 **After you change this repo:** reinstall into OpenClaw from your checkout so `~/.openclaw/extensions/...` picks up the new files, then restart the gateway (same `plugins install` lines as above, with `./plugins/enrichment-engine` then `./plugins/advisor-lead-gen` from the monorepo root).
 
-Bootstrap the domain DB and load SEC advisors:
+Load SEC advisors (schema is auto-initialized by initializer and `extract`):
 
 ```bash
-npm run bootstrap
-# Optional: apply the OpenClaw sub-agent limit automatically (still requires restart):
-# npm run bootstrap -- --apply-openclaw-config
 npm run extract -- --state <STATE> --limit <N>
 ```
 
@@ -56,6 +55,12 @@ npm run extract -- --state <STATE> --limit <N>
 - Hard cut: the old extension-local path `~/.openclaw/extensions/advisor-lead-gen/advisors.db` is no longer used as a fallback.
 
 All domain scripts and the advisor initializer now resolve/init the same domain DB path, so extraction and enrichment writes stay in sync.
+
+## What is still manual
+
+- Set API keys (`BRAVE_API_KEY`, optional `FIRECRAWL_API_KEY`).
+- Load advisor seed data (`npm run extract ...`) for your target state/limit.
+- Restart gateway after config changes that require process reload in your environment.
 
 In chat: **"set up the lead gen skill"** — the agent follows `references/SETUP_WIZARD.md`.
 

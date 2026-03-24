@@ -39,14 +39,9 @@ openclaw plugins enable enrichment-engine
 openclaw plugins enable advisor-lead-gen
 ```
 
-### 2) Register orchestrator agent
+`advisor-enrich` agent registration is automatic at startup.
 
-```bash
-openclaw agents add advisor-enrich \
-  --workspace ~/.openclaw/extensions/advisor-lead-gen
-```
-
-### 3) Configure required API key
+### 2) Configure required API key
 
 In **OpenClaw Settings → Environment variables**, add **`BRAVE_API_KEY`** (Brave Search). That writes the same field as:
 
@@ -60,11 +55,13 @@ openclaw config set env.BRAVE_API_KEY "<key-from-user>"
 openclaw config set env.FIRECRAWL_API_KEY "<key-from-user>"
 ```
 
-### 4) Restart gateway
+### 3) Restart gateway
 
 ```bash
-# Required for advisor enrichment (initializer fails hard if this is < 10):
+# Recommended for advisor enrichment:
 openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
+# If this is unset or below 10, initializer auto-sets it to 12.
+# If your gateway does not hot-reload config, restart once.
 openclaw gateway restart
 ```
 
@@ -73,16 +70,15 @@ This starts:
 - `enrichment-engine` dispatcher service
 - `advisor-lead-gen` initializer service
 
-### 5) Rebuild advisor domain DB (breaking schema change)
+### 4) Rebuild advisor domain DB (breaking schema change)
 
 ```bash
 cd ~/.openclaw/extensions/advisor-lead-gen
 rm -f ~/.openclaw/advisor-lead-gen/advisors.db
-npm run bootstrap
 npm run extract -- --state <STATE> --limit <N>
 ```
 
-### 6) Queue an advisor
+### 5) Queue an advisor
 
 ```bash
 node scripts/enqueue-enrich.js --sec-id <SEC_ID>
@@ -105,3 +101,9 @@ By default domain DB path is `~/.openclaw/advisor-lead-gen/advisors.db` unless o
 ## Session note
 
 Keep using `agentId: "advisor-enrich"` when sending orchestrator messages. Session key is typically `agent:advisor-enrich:main`.
+
+## Manual-only requirements
+
+- API secrets remain operator-provided (`BRAVE_API_KEY`, optional `FIRECRAWL_API_KEY`).
+- Data seeding remains operator-driven (`npm run extract -- --state <STATE> --limit <N>`).
+- Gateway restart is only needed when your runtime does not hot-reload config.

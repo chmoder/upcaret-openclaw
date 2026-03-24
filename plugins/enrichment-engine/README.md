@@ -26,9 +26,10 @@ openclaw plugins install advisor-lead-gen   # example consumer
 openclaw plugins enable enrichment-engine
 openclaw plugins enable advisor-lead-gen
 #
-# Required for advisor-lead-gen (10 specialists). Its initializer fails hard
-# if this is below 10.
+# Recommended for advisor-lead-gen (10 specialists):
 openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
+# If unset or below 10, advisor initializer auto-sets it to 12.
+# If your gateway does not hot-reload config, restart once.
 openclaw gateway restart
 ```
 

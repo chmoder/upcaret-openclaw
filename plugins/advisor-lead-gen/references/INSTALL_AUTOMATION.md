@@ -25,11 +25,12 @@ openclaw config set env.BRAVE_API_KEY "<your-brave-search-api-key>"
 # Optional: only if your gateway uses Firecrawl for web_fetch
 # openclaw config set env.FIRECRAWL_API_KEY "<your-firecrawl-api-key>"
 
-# 3) Ensure orchestrator agent exists
-openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen
+# 3) Orchestrator agent registration is automatic at startup
 
-# 4) Required for advisor enrichment (initializer fails hard if this is < 10)
+# 4) Recommended for advisor enrichment
 openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
+# If this is unset or below 10, initializer auto-sets it to 12.
+# If your gateway does not hot-reload config, restart once.
 
 # 5) Restart gateway (starts engine dispatcher + advisor initializer)
 openclaw gateway restart
@@ -48,7 +49,6 @@ The old advisor schema is not migrated in-place. Rebuild by re-extracting SEC da
 ```bash
 cd ~/.openclaw/extensions/advisor-lead-gen
 rm -f ~/.openclaw/advisor-lead-gen/advisors.db
-npm run bootstrap
 npm run extract -- --state <STATE> --limit <N>
 ```
 
@@ -69,6 +69,12 @@ npm run enqueue -- --sec-id <SEC_ID>
 ```
 
 This writes `enrichment_jobs` rows in `enrichment.db`. The `enrichment-engine` plugin dispatches them.
+
+## Manual-only requirements
+
+- Provide API secrets (`BRAVE_API_KEY`, optional `FIRECRAWL_API_KEY`).
+- Choose and run SEC extract scope (`--state`, `--limit`) for your environment.
+- Restart gateway only when your runtime does not pick up config changes live.
 
 ## Upgrade flow
 

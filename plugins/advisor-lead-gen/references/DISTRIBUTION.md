@@ -61,8 +61,6 @@ openclaw plugins install advisor-lead-gen
 openclaw plugins enable enrichment-engine
 openclaw plugins enable advisor-lead-gen
 openclaw config set env.BRAVE_API_KEY "<key>"
-openclaw agents add advisor-enrich \
-  --workspace ~/.openclaw/extensions/advisor-lead-gen
 openclaw gateway restart
 ```
 
@@ -86,8 +84,6 @@ unzip advisor-lead-gen-<version>.zip \
 openclaw plugins enable enrichment-engine
 openclaw plugins enable advisor-lead-gen
 openclaw config set env.BRAVE_API_KEY "<key>"
-openclaw agents add advisor-enrich \
-  --workspace ~/.openclaw/extensions/advisor-lead-gen
 openclaw gateway restart
 ```
 
