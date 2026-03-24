@@ -8,7 +8,7 @@
 
 ## Install story (one sentence)
 
-Install and enable both plugins (`enrichment-engine` + `advisor-lead-gen`), set **`BRAVE_API_KEY`** in OpenClaw config (UI **Settings → Environment variables** or `openclaw config set env.BRAVE_API_KEY`), restart gateway — engine dispatch starts automatically.
+Install and enable both plugins (`enrichment-engine` + `advisor-lead-gen`), set **`BRAVE_API_KEY`** in OpenClaw config (UI **Settings → Environment variables** or `openclaw config set env.BRAVE_API_KEY`), optionally **`FIRECRAWL_API_KEY`** if your gateway uses Firecrawl for `web_fetch`, restart gateway — engine dispatch starts automatically.
 
 ## Upgrades (every new release)
 

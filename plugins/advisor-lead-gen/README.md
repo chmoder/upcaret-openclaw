@@ -27,6 +27,7 @@ openclaw plugins install advisor-lead-gen
 openclaw plugins enable enrichment-engine
 openclaw plugins enable advisor-lead-gen
 # Set BRAVE_API_KEY: Settings → Environment variables, or openclaw config set env.BRAVE_API_KEY "<key>"
+# Optional (if your gateway uses Firecrawl for web_fetch): openclaw config set env.FIRECRAWL_API_KEY "<fc-key>"
 #
 # Required for advisor enrichment (10 specialists):
 # Without this you may see: "gateway max active children limit reached (5/5)"

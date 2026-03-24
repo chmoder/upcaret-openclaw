@@ -67,7 +67,7 @@
     },
     "FIRECRAWL_API_KEY": {
       "required": false,
-      "description": "Optional paid fetcher"
+      "description": "Optional Firecrawl API key for URL scraping / web_fetch when your OpenClaw gateway is configured to use Firecrawl. Set via Settings → Environment variables or openclaw config set env.FIRECRAWL_API_KEY"
     },
     "HUNTER_API_KEY": {
       "required": false,

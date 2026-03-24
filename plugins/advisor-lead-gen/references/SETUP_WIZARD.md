@@ -54,6 +54,12 @@ In **OpenClaw Settings → Environment variables**, add **`BRAVE_API_KEY`** (Bra
 openclaw config set env.BRAVE_API_KEY "<key-from-user>"
 ```
 
+**Optional — Firecrawl:** If your OpenClaw gateway routes `web_fetch` through [Firecrawl](https://www.firecrawl.dev/), add the same way:
+
+```bash
+openclaw config set env.FIRECRAWL_API_KEY "<key-from-user>"
+```
+
 ### 4) Restart gateway
 
 ```bash

@@ -22,6 +22,8 @@ openclaw plugins enable advisor-lead-gen
 
 # 2) Required key for enrichment (OpenClaw Settings → Environment variables, or:)
 openclaw config set env.BRAVE_API_KEY "<your-brave-search-api-key>"
+# Optional: only if your gateway uses Firecrawl for web_fetch
+# openclaw config set env.FIRECRAWL_API_KEY "<your-firecrawl-api-key>"
 
 # 3) Ensure orchestrator agent exists
 openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen

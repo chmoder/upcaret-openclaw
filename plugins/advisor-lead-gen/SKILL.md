@@ -109,7 +109,7 @@ There are two distinct workflows:
 | ------------------- | -------- | ---------------------------------------------------------------- |
 | `BRAVE_API_KEY`     | Yes      | Brave Search API key for web discovery during enrichment         |
 | `ANTHROPIC_API_KEY` | Optional | LLM use in specialist sub-sessions, if your model setup needs it |
-| `FIRECRAWL_API_KEY` | Optional | Paid fetcher                                                     |
+| `FIRECRAWL_API_KEY` | Optional | Firecrawl (URL scrape / `web_fetch`) when your gateway is wired to Firecrawl |
 | `HUNTER_API_KEY`    | Optional | Email verification and enrichment                                |
 
 Keys are stored in **OpenClaw config** under `env` (same values the gateway sees). Prefer **OpenClaw Settings → Environment variables** in the UI, or the CLI:

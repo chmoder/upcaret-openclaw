@@ -174,6 +174,9 @@ function main() {
     "  • Install plugins: openclaw plugins install enrichment-engine && openclaw plugins install advisor-lead-gen",
   );
   console.log('  • Set key: openclaw config set env.BRAVE_API_KEY "<key>"');
+  console.log(
+    '  • Optional Firecrawl: openclaw config set env.FIRECRAWL_API_KEY "<fc-key>" (if gateway uses it for web_fetch)',
+  );
   console.log("  • Restart gateway: openclaw gateway restart");
   console.log("  • Enqueue advisors: npm run enqueue -- --sec-id <ID>");
 }

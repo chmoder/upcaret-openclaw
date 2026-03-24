@@ -127,7 +127,7 @@ Give a **short, numbered** list. Do not use vague “configure the server.” Pr
 3. Restart or reload the gateway if your install requires it after config changes.
 4. Return to chat and ask again — you will **`sessions_list`** / **`sessions_send`** as in section 1.
 
-Enrichment requires **`BRAVE_API_KEY`** in OpenClaw config (`env` — use **Settings → Environment variables** or `openclaw config set env.BRAVE_API_KEY "..."`). For other optional keys, same pattern: `openclaw config set env.<KEY> "..."`
+Enrichment requires **`BRAVE_API_KEY`** in OpenClaw config (`env` — use **Settings → Environment variables** or `openclaw config set env.BRAVE_API_KEY "..."`). For other optional keys, same pattern (for example `openclaw config set env.FIRECRAWL_API_KEY "..."` when the gateway uses Firecrawl for `web_fetch`).
 
 ---
 
