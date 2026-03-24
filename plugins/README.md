@@ -2,10 +2,10 @@
 
 Each subdirectory is an installable OpenClaw plugin (ships `openclaw.plugin.json` + `plugin-entry.ts` where applicable).
 
-| Plugin | Description |
-|--------|-------------|
-| **enrichment-engine** | Generic job queue dispatcher — poll loop, agent spawn, stale recovery. Required by domain plugins. |
-| **advisor-lead-gen** | SEC IAPD advisor domain layer — data download, orchestrator skill, specialist agents, lead scoring. Requires `enrichment-engine`. |
+| Plugin                | Description                                                                                                                       |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| **enrichment-engine** | Generic job queue dispatcher — poll loop, agent spawn, stale recovery. Required by domain plugins.                                |
+| **advisor-lead-gen**  | SEC IAPD advisor domain layer — data download, orchestrator skill, specialist agents, lead scoring. Requires `enrichment-engine`. |
 
 ## Install order
 
