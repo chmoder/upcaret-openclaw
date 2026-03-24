@@ -116,26 +116,49 @@ async function ensureDbSchema() {
   initSchema(_db);
 }
 
+function toEntityId(secId) {
+  return `advisor:${Number(secId)}`;
+}
+
 function upsertAdvisorSECFields(advisor) {
-  // Upsert SEC-sourced fields only; preserve enrichment fields (email/phone/linkedin/etc.)
+  const entityId = toEntityId(advisor.sec_id);
+  const displayName = [advisor.first_name, advisor.last_name].filter(Boolean).join(" ");
   dbRunLocal(
     `
-    INSERT INTO advisors (
-      sec_id, first_name, middle_name, last_name, alternate_names,
+    INSERT INTO entities (
+      entity_id, entity_type, display_name, source_system, source_key, updated_at
+    ) VALUES (
+      ?, 'advisor', ?, 'sec_iapd', ?, datetime('now')
+    )
+    ON CONFLICT(entity_id) DO UPDATE SET
+      display_name = excluded.display_name,
+      source_system = excluded.source_system,
+      source_key = excluded.source_key,
+      updated_at = datetime('now');
+    `,
+    [entityId, displayName, String(advisor.sec_id)],
+  );
+
+  // Upsert SEC-sourced fields into advisor-specific extension table.
+  dbRunLocal(
+    `
+    INSERT INTO advisor_profiles (
+      entity_id, sec_id, first_name, middle_name, last_name, alternate_names,
       firm_id, firm_name, city, state, zip,
       registration_status, investment_advisor_only, disclosure_flag,
       finra_registration_count, employment_count,
       last_updated_iapd, raw_employment_data,
       updated_at
     ) VALUES (
-      ?, ?, ?, ?, ?,
+      ?, ?, ?, ?, ?, ?,
       ?, ?, ?, ?, ?,
       ?, ?, ?,
       ?, ?,
       ?, ?,
       datetime('now')
     )
-    ON CONFLICT(sec_id) DO UPDATE SET
+    ON CONFLICT(entity_id) DO UPDATE SET
+      sec_id = excluded.sec_id,
       first_name = excluded.first_name,
       middle_name = excluded.middle_name,
       last_name = excluded.last_name,
@@ -155,6 +178,7 @@ function upsertAdvisorSECFields(advisor) {
       updated_at = datetime('now');
     `,
     [
+      entityId,
       advisor.sec_id,
       advisor.first_name,
       advisor.middle_name,
@@ -281,7 +305,10 @@ function parseAdvisor(doc) {
         continue;
       }
       
-      const existing = dbGetLocal('SELECT sec_id FROM advisors WHERE sec_id = ?', [advisor.sec_id]);
+      const existing = dbGetLocal(
+        "SELECT sec_id FROM advisor_profiles WHERE sec_id = ?",
+        [advisor.sec_id],
+      );
       upsertAdvisorSECFields(advisor);
 
       if (existing) {
@@ -304,7 +331,14 @@ function parseAdvisor(doc) {
     
     // Export JSON if requested
     if (output) {
-      const rows = dbAllLocal('SELECT * FROM advisors ORDER BY updated_at DESC LIMIT ?', [limit]);
+      const rows = dbAllLocal(
+        `SELECT ap.*, e.enriched_at, e.lead_score, e.lead_score_reason
+         FROM advisor_profiles ap
+         LEFT JOIN entities e ON e.entity_id = ap.entity_id
+         ORDER BY ap.updated_at DESC
+         LIMIT ?`,
+        [limit],
+      );
       fs.writeFileSync(output, JSON.stringify(rows, null, 2));
       console.log(`📄 Exported to: ${output}`);
     } else {

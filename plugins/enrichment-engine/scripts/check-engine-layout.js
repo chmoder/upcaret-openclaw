@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Verifies minimal skill layout (no API keys).
+ * Verifies minimal enrichment-engine layout and in-memory schema initialization.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -11,22 +11,12 @@ const __dirname = path.dirname(__filename);
 const root = path.join(__dirname, "..");
 
 const required = [
-  "SKILL.md",
-  "IDENTITY.md",
-  "scripts/bootstrap.js",
+  "README.md",
+  "package.json",
+  "openclaw.plugin.json",
+  "plugin-entry.ts",
   "scripts/db.js",
   "scripts/db-init.js",
-  "scripts/engine-db.js",
-  "scripts/extract-advisors.js",
-  "scripts/enqueue-enrich.js",
-  "scripts/feed.js",
-  "scripts/next-advisor.js",
-  "scripts/record-enrichment.js",
-  "scripts/reset-queue.js",
-  "scripts/save-enrichment.js",
-  "scripts/status-dashboard.js",
-  "agents/profile.md",
-  "agents/scorer.md",
 ];
 
 let ok = true;
@@ -38,4 +28,4 @@ for (const rel of required) {
   }
 }
 if (!ok) process.exit(1);
-console.log("OK: all required scripts, agents, and skill files present");
+console.log("OK: all required plugin files and scripts present");

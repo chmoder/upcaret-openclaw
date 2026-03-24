@@ -59,7 +59,7 @@ Per [OpenClaw cron jobs](https://docs.openclaw.ai/cron), jobs may include **`age
 | **`agentId`: `"advisor-enrich"`** | **Which agent** runs the turn — **required** for reliable enrichment. |
 | **`payload.kind`**: **`agentTurn`** | Carries **`message`** (`ENRICH:…`, **`TICK`**, etc.). |
 
-CLI equivalent: **`openclaw cron add … --agent advisor-enrich`** (see cron docs). **`npm run setup:openclaw`** prints JSON and CLI examples with **`agentId`**.
+CLI equivalent: **`openclaw cron add … --agent advisor-enrich`** (see cron docs). Ensure jobs set **`agentId: "advisor-enrich"`** so the gateway routes the run into the correct workspace.
 
 **Still required:** after **`ENRICH`**, send **`TICK`** (repeat until **`DONE:`** in **`sessions_history`**) unless your automation already advances the orchestrator another way.
 

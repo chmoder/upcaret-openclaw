@@ -1,16 +1,15 @@
 #!/usr/bin/env node
 /**
- * reset-queue.js — Flush the enrichment queue and advisor-enrich session inbox.
+ * reset-queue.js — Flush advisor jobs from enrichment.db and reset advisor-enrich session.
  *
  * Clears:
- *   - enrichment_queue rows that are not 'done' (queued, running, failed)
- *   - pending_enrichments rows (in-flight specialist tracking)
+ *   - enrichment_jobs rows for pipeline='advisors' that are not done
+ *   - enrichment_specialist_runs and enrichment_events attached to those jobs
  *   - The advisor-enrich OpenClaw session (destroys session inbox and history)
  *
  * Preserves:
- *   - enrichment_queue rows with status='done'
- *   - advisor_findings and advisors table (enriched data is never touched)
- *   - enrichment_errors log
+ *   - done enrichment_jobs rows
+ *   - domain tables in advisors.db (entities/advisor_profiles/findings)
  *
  * Usage:
  *   node scripts/reset-queue.js [--session-dir <path>] [--dry-run]
@@ -19,20 +18,15 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-import { openDb } from "./db.js";
-import { initSchema } from "./db-init.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DB_PATH = path.join(__dirname, "..", "advisors.db");
+import { initEngineSchema, openEngineDb, resolveEngineDbPath } from "./engine-db.js";
 
 // Default session directory — prefer OPENCLAW_HOME env, then $HOME, then container default
 const OPENCLAW_BASE = process.env.OPENCLAW_HOME
-  || (process.env.HOME ? path.join(process.env.HOME, '.openclaw') : '/home/node/.openclaw');
-const DEFAULT_SESSION_DIR = path.join(OPENCLAW_BASE, 'agents', 'advisor-enrich', 'sessions');
+  || (process.env.HOME ? `${process.env.HOME}/.openclaw` : `${os.homedir()}/.openclaw`);
+const DEFAULT_SESSION_DIR = `${OPENCLAW_BASE}/agents/advisor-enrich/sessions`;
 
 function parseArgs(argv) {
   const args = argv.slice(2);
@@ -46,27 +40,78 @@ function parseArgs(argv) {
 
 function main() {
   const opts = parseArgs(process.argv);
-  const results = { db_queue_cleared: 0, db_pending_cleared: 0, session_files_removed: [] };
+  const results = {
+    engine_jobs_cleared: 0,
+    specialist_runs_cleared: 0,
+    events_cleared: 0,
+    session_files_removed: [],
+  };
 
-  // 1. Clear DB queue (non-done rows only)
-  const db = openDb(DB_PATH);
+  const engineDb = openEngineDb(resolveEngineDbPath());
   try {
-    initSchema(db); // ensure tables exist even if db-init hasn't been run yet
-    if (opts.dryRun) {
-      // Count what would be deleted without touching the DB.
-      const qCount = db.prepare(`SELECT COUNT(*) AS n FROM enrichment_queue WHERE status != 'done'`).get();
-      const pCount = db.prepare(`SELECT COUNT(*) AS n FROM pending_enrichments`).get();
-      results.db_queue_cleared = qCount.n;
-      results.db_pending_cleared = pCount.n;
-    } else {
-      const qResult = db.prepare(`DELETE FROM enrichment_queue WHERE status != 'done'`).run();
-      results.db_queue_cleared = qResult.changes;
+    initEngineSchema(engineDb);
+    const targetJobs = engineDb
+      .prepare(
+        `SELECT job_id
+         FROM enrichment_jobs
+         WHERE pipeline_id='advisors' AND status != 'done'`,
+      )
+      .all()
+      .map((r) => String(r.job_id));
 
-      const pResult = db.prepare(`DELETE FROM pending_enrichments`).run();
-      results.db_pending_cleared = pResult.changes;
+    if (opts.dryRun) {
+      results.engine_jobs_cleared = targetJobs.length;
+      if (targetJobs.length > 0) {
+        const placeholders = targetJobs.map(() => "?").join(", ");
+        results.specialist_runs_cleared = Number(
+          engineDb
+            .prepare(
+              `SELECT COUNT(*) AS n
+               FROM enrichment_specialist_runs
+               WHERE job_id IN (${placeholders})`,
+            )
+            .get(...targetJobs)?.n || 0,
+        );
+        results.events_cleared = Number(
+          engineDb
+            .prepare(
+              `SELECT COUNT(*) AS n
+               FROM enrichment_events
+               WHERE job_id IN (${placeholders})`,
+            )
+            .get(...targetJobs)?.n || 0,
+        );
+      }
+    } else {
+      if (targetJobs.length > 0) {
+        const placeholders = targetJobs.map(() => "?").join(", ");
+        const specialistResult = engineDb
+          .prepare(
+            `DELETE FROM enrichment_specialist_runs
+             WHERE job_id IN (${placeholders})`,
+          )
+          .run(...targetJobs);
+        results.specialist_runs_cleared = specialistResult.changes;
+
+        const eventsResult = engineDb
+          .prepare(
+            `DELETE FROM enrichment_events
+             WHERE job_id IN (${placeholders})`,
+          )
+          .run(...targetJobs);
+        results.events_cleared = eventsResult.changes;
+
+        const jobsResult = engineDb
+          .prepare(
+            `DELETE FROM enrichment_jobs
+             WHERE job_id IN (${placeholders})`,
+          )
+          .run(...targetJobs);
+        results.engine_jobs_cleared = jobsResult.changes;
+      }
     }
   } finally {
-    db.close();
+    engineDb.close();
   }
 
   // 2. Remove advisor-enrich session files (clears OpenClaw inbox + history)
@@ -87,8 +132,8 @@ function main() {
 
   if (opts.dryRun) {
     console.log(`DRY_RUN — would have done:`);
-    console.log(`  DELETE FROM enrichment_queue WHERE status != 'done'`);
-    console.log(`  DELETE FROM pending_enrichments`);
+    console.log(`  DELETE advisor pipeline jobs from enrichment_jobs WHERE status != 'done'`);
+    console.log(`  DELETE matching rows from enrichment_specialist_runs and enrichment_events`);
     console.log(`  Remove session files: ${results.session_files_removed.join(', ') || 'none found'}`);
   } else {
     console.log(`RESET_DONE:${JSON.stringify(results)}`);

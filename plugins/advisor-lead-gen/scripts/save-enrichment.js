@@ -31,10 +31,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { dbGet, dbRun, openDb } from "./db.js";
+import {
+  advisorEntityId,
+  initEngineSchema,
+  openEngineDb,
+  resolveEngineDbPath,
+} from "./engine-db.js";
+import { normalizeFindingType } from "./finding-types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DB_PATH = path.join(__dirname, "..", "advisors.db");
+const DB_PATH = process.env.ADVISOR_DOMAIN_DB_PATH || path.join(__dirname, "..", "advisors.db");
+const ENGINE_DB_PATH = resolveEngineDbPath();
 
 function main() {
   // Accept either:
@@ -81,20 +89,41 @@ function main() {
   }
 
   const db = openDb(DB_PATH);
+  const engineDb = openEngineDb(ENGINE_DB_PATH);
   try {
-    // Guard: only accept results for an advisor that is actively running in the queue.
-    // If the queue row is missing or was already marked failed/done, refuse to write —
-    // this prevents a timed-out (failed) run from being scored when a late result arrives.
-    const queueRow = dbGet(db, `SELECT status FROM enrichment_queue WHERE sec_id = ? AND status = 'running'`, [sec_id]);
-    if (!queueRow) {
-      console.error(`ERROR:no active running queue entry for sec_id ${sec_id} — result discarded (advisor may have timed out or already completed)`);
+    initEngineSchema(engineDb);
+    const entityId = advisorEntityId(sec_id);
+
+    // Ensure the entity exists so findings inserts don't trip the FK constraint
+    // when the domain DB was created but not yet populated with advisor entities.
+    dbRun(
+      db,
+      `INSERT OR IGNORE INTO entities (entity_id, entity_type, source_system, source_key, created_at, updated_at)
+       VALUES (?, 'advisor', 'sec_iapd', ?, datetime('now'), datetime('now'))`,
+      [entityId, String(sec_id)],
+    );
+
+    // Guard: only accept results for an actively running engine job.
+    const runningJob = engineDb
+      .prepare(
+        `SELECT job_id
+         FROM enrichment_jobs
+         WHERE pipeline_id='advisors' AND entity_id=? AND status='running'
+         ORDER BY started_at DESC
+         LIMIT 1`,
+      )
+      .get(entityId);
+    if (!runningJob) {
+      console.error(
+        `ERROR:no active running job for sec_id ${sec_id} — result discarded (advisor may have timed out or already completed)`,
+      );
       process.exit(1);
     }
 
-    // Update advisor row
+    // Update domain entity summary.
     dbRun(
       db,
-      `UPDATE advisors
+      `UPDATE entities
        SET enriched_at       = datetime('now'),
            updated_at        = datetime('now'),
            lead_score        = ?,
@@ -104,26 +133,33 @@ function main() {
              THEN 'enriched'
              ELSE validation_status
            END
-       WHERE sec_id = ?`,
-      [Number(lead_score) || 0, String(score_reason || ''), sec_id]
+       WHERE entity_id = ?`,
+      [Number(lead_score) || 0, String(score_reason || ""), entityId],
     );
 
-    // Insert findings
+    // Insert findings into the unified findings table.
     const insertSql = `
-      INSERT OR IGNORE INTO advisor_findings
-        (sec_id, finding_type, finding_value, source_url, agent_name, confidence, created_at)
+      INSERT OR IGNORE INTO findings
+        (entity_id, finding_type, finding_value, source_url, agent_name, confidence, created_at)
       VALUES
         (?, ?, ?, ?, ?, ?, datetime('now'))
     `;
 
     const insertStmt = db.prepare(insertSql);
     let saved = 0;
+    const coercedTypeCounts = new Map();
     for (const f of Array.isArray(findings) ? findings : []) {
       const value = String(f.finding_value || '').trim();
       if (!value) continue;
+      const rawType = String(f.finding_type ?? "").trim();
+      const findingType = normalizeFindingType(rawType);
+      if (findingType === "unknown" && rawType.toLowerCase() !== "unknown") {
+        const key = rawType || "(empty)";
+        coercedTypeCounts.set(key, (coercedTypeCounts.get(key) || 0) + 1);
+      }
       const r = insertStmt.run(
-        sec_id,
-        String(f.finding_type || 'unknown'),
+        entityId,
+        findingType,
         value,
         String(f.source_url || ''),
         String(f.agent_name || f.source_name || ''),
@@ -131,45 +167,50 @@ function main() {
       );
       saved += r.changes; // 0 if deduped by UNIQUE constraint, 1 if inserted
     }
-
-    // Promote best findings back to advisor columns for fast querying / export.
-    // "Best" = highest confidence, then most recently inserted. One value per field.
-    const PROMOTIONS = [
-      { col: 'email',           type: 'email' },
-      { col: 'phone',           type: 'phone' },
-      { col: 'linkedin_url',    type: 'linkedin_url' },
-      { col: 'linkedin_handle', type: 'linkedin_handle' },
-      { col: 'firm_website',    type: 'firm_website' },
-    ];
-    const confRank = { high: 3, medium: 2, low: 1 };
-    const promotions = {};
-    for (const { col, type } of PROMOTIONS) {
-      const row = db.prepare(
-        `SELECT finding_value, confidence FROM advisor_findings
-         WHERE sec_id = ? AND finding_type = ?
-         ORDER BY CASE confidence WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC,
-                  created_at DESC LIMIT 1`
-      ).get(sec_id, type);
-      if (row) promotions[col] = row.finding_value;
-    }
-    if (Object.keys(promotions).length > 0) {
-      const sets = Object.keys(promotions).map(c => `${c} = ?`).join(', ');
-      const vals = [...Object.values(promotions), sec_id];
-      db.prepare(`UPDATE advisors SET ${sets} WHERE sec_id = ?`).run(...vals);
+    if (coercedTypeCounts.size > 0) {
+      const summary = Array.from(coercedTypeCounts.entries())
+        .map(([type, count]) => `${type} (${count})`)
+        .join(", ");
+      console.error(`WARN: coerced invalid finding_type values to "unknown": ${summary}`);
     }
 
-    // Mark queue row as done
-    db.prepare(
-      `UPDATE enrichment_queue
-       SET status='done', completed_at=datetime('now'), lead_score=?
-       WHERE sec_id=? AND status='running'`
-    ).run(Number(lead_score) || 0, sec_id);
+    engineDb
+      .prepare(
+        `UPDATE enrichment_jobs
+         SET status='done',
+             completed_at=datetime('now'),
+             result_json=?,
+             error=NULL
+         WHERE job_id=?`,
+      )
+      .run(
+        JSON.stringify({
+          sec_id,
+          lead_score: Number(lead_score) || 0,
+          score_reason: String(score_reason || ""),
+          findings_count: saved,
+        }),
+        String(runningJob.job_id),
+      );
 
-    const result = { sec_id, lead_score: Number(lead_score) || 0, findings_count: saved, promoted: Object.keys(promotions) };
+    engineDb
+      .prepare(
+        `INSERT INTO enrichment_events (job_id, event_type, message, context_json, created_at)
+         VALUES (?, 'job_done', ?, NULL, datetime('now'))`,
+      )
+      .run(String(runningJob.job_id), `Saved enrichment for sec_id=${sec_id}`);
+
+    const result = { sec_id, lead_score: Number(lead_score) || 0, findings_count: saved };
     console.log(`SAVED:${JSON.stringify(result)}`);
   } finally {
     db.close();
+    engineDb.close();
   }
 }
 
-main();
+try {
+  main();
+} catch (err) {
+  console.error(`ERROR:${err.message}`);
+  process.exit(1);
+}

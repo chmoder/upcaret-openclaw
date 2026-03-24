@@ -12,7 +12,7 @@ When you receive a message, determine which command it is and follow the exact p
 
 **YOU DO NOT RESEARCH ADVISORS YOURSELF.** You spawn specialists and yield. TICKs drive completion.
 
-**Your session was reset before this ENRICH arrived.** The caller always runs `reset-session.js` immediately before dispatching an ENRICH, so you are starting with a clean context. Do not attempt to reset the session yourself during this turn — doing so would delete the active session and break auto-resume.
+**Your session was reset before this ENRICH arrived.** The dispatcher (the `enrichment-engine` plugin) resets the orchestrator session best-effort immediately before dispatching an ENRICH, so you are starting with a clean context. Do not attempt to reset the session yourself during this turn — doing so would delete the active session and break auto-resume.
 
 ### Step 1 — Mark queue as running
 
@@ -27,7 +27,9 @@ Read the output and exit code carefully:
 
 ### Step 2 — Spawn all 10 specialists
 
-Read each specialist instruction file, then spawn all 10 using `sessions_spawn` with `mode="run"` and `runTimeoutSeconds=90`.
+Read each specialist instruction file, then spawn specialists **one at a time** (sequentially) using `sessions_spawn` with `mode="run"` and **`runTimeoutSeconds=90`** (hard cap on specialist wall time — they must return JSON before the runtime kills the run).
+
+Do not try to “batch” or parallelize spawns. Wait for each `sessions_spawn` to return a `childSessionKey`, record it, then move to the next specialist. Once spawned, specialists run concurrently in the background — sequential spawning is only to avoid overloading the gateway during session creation.
 
 Task format for each: `[full contents of specialist .md file]\n---\nRESEARCH:[advisor_json]`
 
@@ -50,6 +52,13 @@ node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen
   --sec-id <SEC_ID> --specialist <name> --session-key <childSessionKey>
 ```
 
+If `sessions_spawn` fails with a transient gateway timeout (commonly: `gateway timeout after 10000ms during spawn`), immediately retry that same specialist spawn **up to 2 times** before giving up. If it still fails, record it as a failed specialist and continue spawning the remaining specialists:
+
+```bash
+node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" specialist-fail \
+  --sec-id <SEC_ID> --specialist <name> --error "gateway timeout during spawn"
+```
+
 ### Step 3 — Yield and output SPAWNED
 
 Call `sessions_yield` to end this turn. Output:
@@ -57,13 +66,15 @@ Call `sessions_yield` to end this turn. Output:
 SPAWNED:{"sec_id":<SEC_ID>,"specialists":10}
 ```
 
-The OpenClaw runtime auto-resumes this session when all specialists complete. Do NOT poll. Do NOT continue. **Do NOT add a periodic TICK cron** — it races with auto-resume and corrupts the queue.
+The **enrichment-engine** dispatcher will send additional **`TICK:<same payload JSON>`** turns after this yield until the run prints **`DONE:`** (or the job is marked complete in the engine DB). Treat each TICK like a fresh step: poll pending specialists, record completions, then yield with `TICK_PARTIAL` if needed.
+
+Do **not** add a separate host **cron** that TICKs in parallel with the dispatcher — that can race the same agent session. Manual TICK via CLI is still fine for one-off recovery.
 
 ---
 
-## TICK (manual recovery only)
+## TICK (dispatcher-driven + manual recovery)
 
-**This command is for manual recovery of stuck enrichments only.** Under normal operation the runtime auto-resumes this agent when specialists complete; no external TICK is needed. Send TICK by hand only if an enrichment has been running for >10 minutes with no DONE output.
+**Normal operation:** the enrichment-engine sends TICK automatically after `SPAWNED` (see above). **Manual recovery:** if you are debugging outside the dispatcher, send TICK by hand when an enrichment has been running for a long time with no `DONE:` output.
 
 Advance the currently running enrichment one step.
 
@@ -99,18 +110,25 @@ A specialist has responded when its history contains an assistant message with a
   node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" specialist-done \
     --sec-id <SEC_ID> --specialist <name>
   ```
-- **No response yet and elapsed_secs < 300** → leave it pending. Output `TICK_PARTIAL:<sec_id>:<done_count>/10` and yield — wait for next TICK.
-- **No response and elapsed_secs >= 300 (5 min timeout)** → record as failed:
+- **No response yet and elapsed_secs < 95** → leave it pending (95s allows a few seconds past the specialist `runTimeoutSeconds=90`). Output `TICK_PARTIAL:<sec_id>:<done_count>/10` and yield — wait for next TICK.
+- **No response and elapsed_secs >= 95** → record as failed (exceeded specialist run budget):
   ```bash
   node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" specialist-fail \
-    --sec-id <SEC_ID> --specialist <name> --error "timeout after 5 minutes"
+    --sec-id <SEC_ID> --specialist <name> --error "timeout after 90s specialist run budget"
   ```
 
 ### Step T3 — Check if all specialists are resolved
 
-If any specialist is still PENDING after this TICK, output `TICK_PARTIAL:<sec_id>:<done_count>/10` and yield. Cron will send the next TICK.
+If any specialist is still PENDING after this TICK, output `TICK_PARTIAL:<sec_id>:<done_count>/10` and yield. The enrichment-engine dispatcher will send the next TICK.
 
-If all 10 are DONE or FAILED, proceed to Step T4.
+If all 10 are DONE or FAILED, **do not** proceed to merge/score/save in this same turn.
+
+Output:
+```
+ALL_SPECIALISTS_DONE:{"sec_id":<SEC_ID>}
+```
+
+Then **stop**. Do not call `sessions_yield`. The enrichment-engine will reset the session and send a `COMPLETE:` message to finish the merge/score/save work in a fresh turn.
 
 ### Step T4 — Merge findings
 
@@ -184,6 +202,58 @@ DONE:{"sec_id":...,"name":"...","lead_score":...,"findings_count":...,"score_rea
 
 ---
 
+## COMPLETE:{...same advisor_json as ENRICH...}
+
+Complete an enrichment after specialists are resolved. This phase must stay short to avoid session lock contention.
+
+### Step C1 — Verify active enrichment
+
+```bash
+node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" queue-status
+```
+
+Must output `RUNNING:<sec_id>`. If `IDLE`, output `ERROR:no_active_enrichment` and stop.
+
+### Step C2 — Merge findings (same as T4)
+
+List DONE specialists:
+
+```bash
+node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" specialist-list \
+  --sec-id <SEC_ID> --status DONE
+```
+
+For each DONE specialist session, read the JSON using `sessions_history` and concatenate all `findings` arrays into one flat array.
+
+### Step C3 — Spawn scorer (same as T5), then stop
+
+Spawn scorer with `sessions_spawn`, `mode="run"`, `runTimeoutSeconds=60`.
+
+Output:
+```
+SCORE_SPAWNED:{"sec_id":<SEC_ID>}
+```
+
+Then stop. Do not call `sessions_yield`.
+
+---
+
+## COMPLETE_TICK:{...same advisor_json as ENRICH...}
+
+Finish scoring + save after `SCORE_SPAWNED`.
+
+### Step CT1 — Wait for scorer result
+
+Use `sessions_history` on the scorer child session key to retrieve the score. If scorer not ready, output:
+```
+COMPLETE_PARTIAL:{"sec_id":<SEC_ID>}
+```
+and stop.
+
+### Step CT2 — Save (same as T6) + DONE (same as T7)
+
+Once you have score + reason, run `save-enrichment.js` and only then output `DONE:{...}`.
+
 ## STATUS or ENV
 
 Run:
@@ -210,6 +280,6 @@ via exec and return the output.
      --sec-id <SEC_ID> --error "sessions_spawn unavailable"
    ```
    Then output: `ERROR:sessions_spawn_unavailable`
-8. **Any message not matching ENRICH:, TICK, STATUS, or ENV** → reply: `ERROR:unknown_command — I only process ENRICH:, TICK, STATUS, ENV`
+8. **Any message not matching ENRICH:, TICK, COMPLETE:, COMPLETE_TICK:, STATUS, or ENV** → reply: `ERROR:unknown_command — I only process ENRICH:, TICK, COMPLETE:, COMPLETE_TICK:, STATUS, ENV`
 9. **NEVER write a text response mid-task.** After queue-start, proceed immediately to reading specialist files and spawning — do not write any text message until you output `SPAWNED:{...}` or `ERROR:{...}`. Narrating what you are about to do counts as ending your turn early. Just do it.
 10. **One active enrichment at a time.** `queue-start` is the authoritative gate. If it exits with `ERROR:another_running:`, output `QUEUED:<sec_id>` and stop. Do not output `QUEUED` for any other reason. If `queue-start` succeeds with `STARTED:`, always proceed to spawn specialists — even if a queue row already existed for this advisor (that is normal and expected).

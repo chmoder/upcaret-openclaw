@@ -17,27 +17,27 @@
     "scripts/check-skill-layout.js",
     "scripts/db-init.js",
     "scripts/db.js",
+    "scripts/engine-db.js",
+    "scripts/finding-types.js",
     "scripts/enqueue-enrich.js",
     "scripts/extract-advisors.js",
+    "scripts/feed.js",
     "scripts/next-advisor.js",
-    "scripts/orchestrator.js",
     "scripts/record-enrichment.js",
     "scripts/reset-queue.js",
-    "scripts/reset-session.js",
     "scripts/save-enrichment.js",
     "scripts/status-dashboard.js"
   ],
   "scripts": {
     "extract": "node scripts/extract-advisors.js",
-    "orchestrate": "echo 'The orchestrator is IDENTITY.md (advisor-enrich agent). To queue an advisor: node scripts/enqueue-enrich.js --sec-id <ID>.' && exit 1",
     "status": "node scripts/status-dashboard.js",
     "db:init": "node scripts/db-init.js",
     "bootstrap": "node scripts/bootstrap.js",
     "test": "node scripts/check-skill-layout.js",
     "reset:queue": "node scripts/reset-queue.js",
-    "reset:session": "node scripts/reset-session.js",
     "next": "node scripts/next-advisor.js",
-    "enqueue": "node scripts/enqueue-enrich.js"
+    "enqueue": "node scripts/enqueue-enrich.js",
+    "feed": "node scripts/feed.js"
   },
   "keywords": [
     "financial-services",
@@ -52,12 +52,14 @@
     "node": ">=22.5.0"
   },
   "openclaw": {
-    "extensions": ["./plugin-entry.ts"]
+    "extensions": [
+      "./plugin-entry.ts"
+    ]
   },
   "env": {
     "BRAVE_API_KEY": {
       "required": true,
-      "description": "Brave Search API key for web discovery (enrichment only)"
+      "description": "Brave Search API key for web discovery (enrichment). Set via OpenClaw Settings \u2192 Environment variables or openclaw config set env.BRAVE_API_KEY"
     },
     "ANTHROPIC_API_KEY": {
       "required": false,

@@ -1,159 +1,98 @@
 # Setup wizard — "set up the lead gen skill"
 
-**Distribution pattern:** install the **plugin** once → chat with OpenClaw → done.  
-**Release checklist:** see `references/DISTRIBUTION.md`.
+This setup now requires **two plugins** and uses a **split DB** model:
+
+- `enrichment-engine` (dispatch + queue + run history in `enrichment.db`)
+- `advisor-lead-gen` (advisor domain tables + orchestrator prompts)
 
 ---
 
-## Install location (plugin — one path, not two)
+## Install locations
 
-After `openclaw plugins install`, OpenClaw places the plugin at:
+After `openclaw plugins install`:
+
+```text
+~/.openclaw/extensions/enrichment-engine/
+~/.openclaw/extensions/advisor-lead-gen/
+```
+
+The `advisor-enrich` agent workspace is:
 
 ```text
 ~/.openclaw/extensions/advisor-lead-gen/
-  SKILL.md          ← discovered via plugin manifest
-  openclaw.plugin.json
-  plugin-entry.ts   ← in-gateway dispatcher service (PM2-less)
-  package.json
-  scripts/
-  agents/
-  references/
 ```
-
-The `advisor-enrich` OpenClaw agent's `--workspace` points to **this same directory** (`~/.openclaw/extensions/advisor-lead-gen`). Do not copy into `workspace/skills/` for the plugin flow.
-
-**Container path equivalent:** `/home/node/.openclaw/extensions/advisor-lead-gen/`
-
-**Repo path (this project):** `plugins/advisor-lead-gen/` under **`upcaret-openclaw`**.
 
 ---
 
-## Primary flow (chat — no terminal required from the user)
+## Operator steps (ordered)
 
-The user starts in **OpenClaw chat** with something like **"set up the lead gen skill"**. The main agent reads this SKILL.md (already in its workspace skills), then:
-
-1. **Runs `npm run bootstrap`** via exec in the skill directory.
-2. **Runs `npm run setup:openclaw`** via exec; reads the printed commands.
-3. **Executes the `openclaw agents add` command** (or hands it to the user if the CLI is not available from exec).
-4. **Starts the orchestrator session** — runs `openclaw agent --agent advisor-enrich --message STATUS --timeout 60` via exec. This step is required before any `sessions_send` from webchat will work. Do not skip it and do not ask the user to do it manually — exec it directly.
-5. **Collects `BRAVE_API_KEY`** (and optional keys per `npm run env:help`) in chat — never echo them.
-6. **Applies `openclaw config set env.BRAVE_API_KEY`** (or equivalent) via exec or gives exact command.
-7. **Verifies** with `sessions_list` → confirm `session:advisor-orchestrator` present → `sessions_send ENV` (with `agentId: "advisor-enrich"`).
-
-**Fallback:** only if exec/CLI is completely unavailable, give the user the operator commands block below.
-
----
-
-## What the agent executes (ordered)
-
-### 1. Bootstrap
+### 1) Install + enable both plugins
 
 ```bash
-cd ~/.openclaw/extensions/advisor-lead-gen
-npm run bootstrap
+# If published in your marketplace/registry:
+openclaw plugins install enrichment-engine
+openclaw plugins install advisor-lead-gen
+
+# If `enrichment-engine` is not published yet, install from an artifact/path instead:
+#   openclaw plugins install /path/to/enrichment-engine
+openclaw plugins enable enrichment-engine
+openclaw plugins enable advisor-lead-gen
 ```
 
-Idempotent: verifies sqlite3, required scripts, and initialises the DB schema.
-
-### 2. Setup
-
-```bash
-npm run setup:openclaw
-```
-
-Prints the exact `openclaw agents add advisor-enrich --workspace <this-dir>` command plus env, session, and cron examples. Read the output and execute the printed steps.
-
-### 3. Register agent (from openclaw-setup output)
+### 2) Register orchestrator agent
 
 ```bash
 openclaw agents add advisor-enrich \
   --workspace ~/.openclaw/extensions/advisor-lead-gen
 ```
 
-> Note: `--non-interactive` and `--model` flags are not supported in OpenClaw 2026.3+. If running via `docker compose run`, add `-T` to disable TTY: `docker compose run --rm -T openclaw-cli agents add advisor-enrich --workspace /home/node/.openclaw/extensions/advisor-lead-gen`
+### 3) Configure required API key
 
-### 3.5. Start the orchestrator session (REQUIRED before any enrichment)
-
-Webchat can send messages to an **existing** named session, but **cannot create a new one**. The `session:advisor-orchestrator` session must be initialized during setup — otherwise every `sessions_send` from webchat will fail with "session not found."
-
-**Option A — CLI (preferred if exec is available):**
-```bash
-openclaw agent \
-  --agent advisor-enrich \
-  --message STATUS \
-  --timeout 60
-```
-This runs one turn of the advisor-enrich agent and creates its session. The session key will appear as `agent:advisor-enrich:main` in `sessions_list`.
-
-**Option B — OpenClaw control UI (only if exec is completely unavailable):** Open a chat with the **advisor-enrich** agent directly and send `STATUS`. That turn creates the session. Return to the main chat once it responds.
-
-Verify: run `sessions_list` from chat and confirm a session with `agentId: "advisor-enrich"` and key `agent:advisor-enrich:main` appears. If no session appears, repeat step 3.5 before proceeding.
-
-### 4. Queue dispatch (PM2-less)
-
-After `openclaw gateway restart`, the plugin starts an **in-gateway dispatcher service** that polls the SQLite queue and triggers the `advisor-enrich` agent **without PM2**.
-
-If the queue does not move, check gateway logs for `SETUP ERRORS` from the `advisor-lead-gen` plugin.
-
-**To queue an advisor** (dispatcher picks it up within ~5s):
-```bash
-node scripts/enqueue-enrich.js --sec-id <SEC_ID>
-npm run enqueue -- --sec-id <SEC_ID>
-```
-
-**⚠️ Do NOT add a TICK cron job.** TICK races with auto-resume and corrupts saves. TICK is a manual recovery command only — send it by hand if an enrichment is visibly stuck after >5 minutes.
-
-### 5. Apply API key
+In **OpenClaw Settings → Environment variables**, add **`BRAVE_API_KEY`** (Brave Search). That writes the same field as:
 
 ```bash
 openclaw config set env.BRAVE_API_KEY "<key-from-user>"
-# newer CLI: openclaw env set BRAVE_API_KEY=<key>
 ```
 
-### 6. Verify
-
-```javascript
-sessions_list()
-// Confirm a session with agentId "advisor-enrich" and key "agent:advisor-enrich:main" appears.
-// Then verify the orchestrator is healthy:
-sessions_send({ sessionKey: "agent:advisor-enrich:main", agentId: "advisor-enrich", message: "STATUS", timeoutSeconds: 0 })
-```
-
----
-
-## Fallback: operator commands (only if exec/CLI unavailable)
-
-### Install from a zip or git clone
+### 4) Restart gateway
 
 ```bash
-mkdir -p ~/.openclaw/extensions/advisor-lead-gen
-
-# From a zip (extract flat — package.json must be at the root, not nested):
-unzip advisor-lead-gen.zip -d ~/.openclaw/extensions/advisor-lead-gen
-
-# Or from a git repo:
-rsync -a --exclude node_modules --exclude advisors.db \
-  /path/to/upcaret-openclaw/plugins/advisor-lead-gen/ \
-  ~/.openclaw/extensions/advisor-lead-gen/
-
-cd ~/.openclaw/extensions/advisor-lead-gen
-npm run bootstrap
-npm run setup:openclaw
+openclaw gateway restart
 ```
 
-Then run the printed `openclaw agents add` and `config set env.BRAVE_API_KEY` commands.
+This starts:
+
+- `enrichment-engine` dispatcher service
+- `advisor-lead-gen` initializer service
+
+### 5) Rebuild advisor domain DB (breaking schema change)
+
+```bash
+cd ~/.openclaw/extensions/advisor-lead-gen
+rm -f advisors.db
+npm run bootstrap
+npm run extract -- --state <STATE> --limit <N>
+```
+
+### 6) Queue an advisor
+
+```bash
+node scripts/enqueue-enrich.js --sec-id <SEC_ID>
+```
+
+`enqueue-enrich.js` writes to `enrichment_jobs` in `enrichment.db`; dispatcher picks it up automatically.
 
 ---
 
-## What to say if something is impossible from chat
+## Runtime DBs
 
-Follow `references/ASSISTANT_GUIDE.md` §3 — numbered, concrete steps. Do **not** claim enrichment ran without `sessions_send` + `DONE:`.
+- Domain DB: `advisors.db` (`entities`, `advisor_profiles`, `findings`)
+- Engine DB: `enrichment.db` (`enrichment_jobs`, `enrichment_specialist_runs`, `enrichment_events`)
+
+By default `enrichment.db` path is `~/.openclaw/enrichment/enrichment.db` unless overridden with `ENRICHMENT_ENGINE_DB_PATH`.
 
 ---
 
-## Related docs
+## Session note
 
-- `references/ASSISTANT_GUIDE.md` — enrichment and SEC-only flows
-- `references/INSTALL_AUTOMATION.md` — what the skill cannot automate alone
-- `references/DISTRIBUTION.md` — release / packaging checklist
-- `references/OPENCLAW_RUNTIME.md` — `ENRICH`, `TICK`, `agentId`, named sessions
+Keep using `agentId: "advisor-enrich"` when sending orchestrator messages. Session key is typically `agent:advisor-enrich:main`.

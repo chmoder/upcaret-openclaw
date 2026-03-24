@@ -1,55 +1,17 @@
 #!/usr/bin/env node
 /**
- * record-enrichment.js — Orchestration state writes for the advisor-enrich agent.
- *
- * Called by the orchestrator LLM (via exec) and by the main agent when dispatching.
- * Centralises all writes to enrichment_queue, pending_enrichments, and enrichment_errors
- * so the orchestrator's IDENTITY.md can stay concise.
- *
- * Subcommands:
- *
- *   queue-add --sec-id <N> --advisor-json '<json>'
- *     Insert a new queued row (idempotent — skips if already queued/running).
- *     Output: QUEUED:<sec_id>
- *
- *   queue-start --sec-id <N>
- *     Mark queue row as running. Output: STARTED:<sec_id>
- *
- *   queue-fail --sec-id <N> --error '<msg>'
- *     Mark queue row as failed. Output: FAILED:<sec_id>
- *
- *   queue-status
- *     Print the currently running enrichment, or IDLE if none.
- *     Output: RUNNING:<sec_id>  or  IDLE
- *
- *   specialist-start --sec-id <N> --specialist <name> --session-key <key>
- *     Insert pending_enrichments row for a specialist. Output: SPECIALIST_STARTED:<sec_id>:<name>
- *
- *   specialist-list --sec-id <N> [--status PENDING|DONE|FAILED]
- *     List specialists for an advisor, one per line.
- *     Output: <STATUS>:<name>:<childSessionKey>:<elapsed_secs>
- *
- *   specialist-done --sec-id <N> --specialist <name>
- *     Mark specialist as DONE. Output: SPECIALIST_DONE:<sec_id>:<name>
- *
- *   specialist-fail --sec-id <N> --specialist <name> --error '<msg>'
- *     Mark specialist as FAILED and log error. Output: SPECIALIST_FAILED:<sec_id>:<name>
- *
- *   log-error --sec-id <N> [--specialist <name>] --error-type <type> --message '<msg>' [--context '<json>']
- *     Append to enrichment_errors log. Output: ERROR_LOGGED:<id>
- *
- * Uses node:sqlite (built-in Node 22.5+) — no npm install required.
+ * record-enrichment.js — Engine job/specialist state writes for advisor orchestrator.
  */
 
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-import { dbAll, dbGet, dbRun, openDb } from "./db.js";
-import { initSchema } from "./db-init.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DB_PATH = path.join(__dirname, "..", "advisors.db");
+import {
+  advisorEntityId,
+  ensureAdvisorPipeline,
+  initEngineSchema,
+  newJobId,
+  openEngineDb,
+  resolveEngineDbPath,
+  secIdFromEntityId,
+} from "./engine-db.js";
 
 function parseArgs(argv) {
   const args = argv.slice(2);
@@ -70,6 +32,19 @@ function parseArgs(argv) {
   return { cmd, flags };
 }
 
+function getActiveJobForSecId(db, secId, statuses = ["queued", "running"]) {
+  const placeholders = statuses.map(() => "?").join(", ");
+  const row = db
+    .prepare(
+      `SELECT job_id, status
+       FROM enrichment_jobs
+       WHERE pipeline_id='advisors' AND entity_id=? AND status IN (${placeholders})
+       ORDER BY queued_at DESC
+       LIMIT 1`,
+    )
+    .get(advisorEntityId(secId), ...statuses);
+  return row || null;
+}
 
 function main() {
   const { cmd, flags } = parseArgs(process.argv);
@@ -84,48 +59,61 @@ function main() {
     process.exit(0);
   }
 
-  const db = openDb(DB_PATH);
+  const dbPath = resolveEngineDbPath();
+  const db = openEngineDb(dbPath);
   try {
-    initSchema(db);
+    initEngineSchema(db);
+    ensureAdvisorPipeline(db);
 
     if (cmd === "queue-add") {
       const secId = Number(flags["sec-id"]);
       if (!secId) throw new Error("--sec-id required");
       const advisorJson = flags["advisor-json"] || null;
 
-      // Skip if already in queue with a non-terminal status
-      const existing = dbGet(
-        db,
-        `SELECT id, status FROM enrichment_queue WHERE sec_id = ? AND status IN ('queued','running') LIMIT 1`,
-        [secId],
-      );
+      const existing = getActiveJobForSecId(db, secId, ["queued", "running"]);
       if (existing) {
         console.log(`QUEUED:${secId} (already ${existing.status})`);
         return;
       }
 
+      const agentId = process.env.ADVISOR_ORCH_AGENT_ID || "advisor-enrich";
       db.prepare(
-        `INSERT INTO enrichment_queue (sec_id, advisor_json, status, queued_at)
-         VALUES (?, ?, 'queued', datetime('now'))`,
-      ).run(secId, advisorJson);
+        `INSERT INTO enrichment_jobs (
+          job_id, pipeline_id, entity_type, entity_id, payload_json,
+          orchestrator_agent_id, message_prefix, status, queued_at
+         ) VALUES (?, 'advisors', 'advisor', ?, ?, ?, 'ENRICH', 'queued', datetime('now'))`,
+      ).run(newJobId(), advisorEntityId(secId), String(advisorJson || "{}"), agentId);
       console.log(`QUEUED:${secId}`);
     } else if (cmd === "queue-start") {
       const secId = Number(flags["sec-id"]);
       if (!secId) throw new Error("--sec-id required");
-      // Enforce single-running: reject if a *different* sec_id is already running.
-      const alreadyRunning = dbGet(
-        db,
-        `SELECT sec_id FROM enrichment_queue WHERE status='running' AND sec_id != ? LIMIT 1`,
-        [secId],
-      );
+      const alreadyRunning = db
+        .prepare(
+          `SELECT entity_id
+           FROM enrichment_jobs
+           WHERE status='running' AND pipeline_id='advisors' AND entity_id != ?
+           LIMIT 1`,
+        )
+        .get(advisorEntityId(secId));
       if (alreadyRunning) {
-        console.error(`ERROR:already_running:${alreadyRunning.sec_id} — cannot start ${secId} while another enrichment is active`);
+        const otherSecId = secIdFromEntityId(alreadyRunning.entity_id);
+        console.error(
+          `ERROR:already_running:${otherSecId ?? alreadyRunning.entity_id} — cannot start ${secId} while another enrichment is active`,
+        );
         process.exit(1);
       }
-      const startResult = db.prepare(
-        `UPDATE enrichment_queue SET status='running', started_at=datetime('now')
-         WHERE id = (SELECT id FROM enrichment_queue WHERE sec_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1)`,
-      ).run(secId);
+      const active = getActiveJobForSecId(db, secId, ["queued", "running"]);
+      if (!active) {
+        console.error(`ERROR:queue-start — no queued/running row found for sec_id ${secId}`);
+        process.exit(1);
+      }
+      const startResult = db
+        .prepare(
+          `UPDATE enrichment_jobs
+           SET status='running', started_at=datetime('now')
+           WHERE job_id=?`,
+        )
+        .run(active.job_id);
       if (startResult.changes === 0) {
         console.error(`ERROR:queue-start — no queued/running row found for sec_id ${secId}`);
         process.exit(1);
@@ -135,51 +123,80 @@ function main() {
       const secId = Number(flags["sec-id"]);
       const error = flags["error"] || "unknown error";
       if (!secId) throw new Error("--sec-id required");
-      const failResult = db.prepare(
-        `UPDATE enrichment_queue SET status='failed', completed_at=datetime('now'), error=?
-         WHERE id = (SELECT id FROM enrichment_queue WHERE sec_id=? AND status='running' ORDER BY id DESC LIMIT 1)`,
-      ).run(error, secId);
+      const active = getActiveJobForSecId(db, secId, ["running"]);
+      const failResult = active
+        ? db
+            .prepare(
+              `UPDATE enrichment_jobs
+               SET status='failed', completed_at=datetime('now'), error=?
+               WHERE job_id=?`,
+            )
+            .run(error, active.job_id)
+        : { changes: 0 };
       if (failResult.changes === 0) {
         console.error(`ERROR:queue-fail — no running row found for sec_id ${secId}`);
         process.exit(1);
       }
+      db.prepare(
+        `INSERT INTO enrichment_events (job_id, event_type, message, context_json, created_at)
+         VALUES (?, 'job_failed', ?, NULL, datetime('now'))`,
+      ).run(active.job_id, String(error));
       console.log(`FAILED:${secId}`);
     } else if (cmd === "queue-status") {
-      const row = dbGet(
-        db,
-        `SELECT sec_id FROM enrichment_queue WHERE status='running' ORDER BY started_at DESC LIMIT 1`,
-      );
-      console.log(row ? `RUNNING:${row.sec_id}` : "IDLE");
+      const row = db
+        .prepare(
+          `SELECT entity_id
+           FROM enrichment_jobs
+           WHERE pipeline_id='advisors' AND status='running'
+           ORDER BY started_at DESC
+           LIMIT 1`,
+        )
+        .get();
+      if (!row) {
+        console.log("IDLE");
+      } else {
+        const secId = secIdFromEntityId(row.entity_id);
+        console.log(secId ? `RUNNING:${secId}` : "IDLE");
+      }
     } else if (cmd === "specialist-start") {
       const secId = Number(flags["sec-id"]);
       const specialist = flags["specialist"];
       const sessionKey = flags["session-key"] || "";
       if (!secId || !specialist)
         throw new Error("--sec-id and --specialist required");
+      const active = getActiveJobForSecId(db, secId, ["running"]);
+      if (!active) {
+        throw new Error(`no running job for sec_id=${secId}`);
+      }
       db.prepare(
-        `INSERT OR REPLACE INTO pending_enrichments
-           (sec_id, specialist, childSessionKey, status, spawned_at)
+        `INSERT OR REPLACE INTO enrichment_specialist_runs
+           (job_id, specialist_name, child_session_key, status, spawned_at)
          VALUES (?, ?, ?, 'PENDING', datetime('now'))`,
-      ).run(secId, specialist, sessionKey);
+      ).run(active.job_id, specialist, sessionKey);
       console.log(`SPECIALIST_STARTED:${secId}:${specialist}`);
     } else if (cmd === "specialist-list") {
       const secId = Number(flags["sec-id"]);
       if (!secId) throw new Error("--sec-id required");
       const statusFilter = flags["status"] || null;
+      const active = getActiveJobForSecId(db, secId, ["running"]);
+      if (!active) {
+        console.log("NONE");
+        return;
+      }
       const sql = statusFilter
-        ? `SELECT specialist, childSessionKey, status, spawned_at
-           FROM pending_enrichments WHERE sec_id=? AND status=? ORDER BY specialist`
-        : `SELECT specialist, childSessionKey, status, spawned_at
-           FROM pending_enrichments WHERE sec_id=? ORDER BY specialist`;
-      const params = statusFilter ? [secId, statusFilter] : [secId];
-      const rows = dbAll(db, sql, params);
+        ? `SELECT specialist_name, child_session_key, status, spawned_at
+           FROM enrichment_specialist_runs WHERE job_id=? AND status=? ORDER BY specialist_name`
+        : `SELECT specialist_name, child_session_key, status, spawned_at
+           FROM enrichment_specialist_runs WHERE job_id=? ORDER BY specialist_name`;
+      const params = statusFilter ? [active.job_id, statusFilter] : [active.job_id];
+      const rows = db.prepare(sql).all(...params);
       const now = Date.now();
       for (const r of rows) {
         const spawned = r.spawned_at
           ? new Date(r.spawned_at.includes("T") ? r.spawned_at : r.spawned_at.replace(" ", "T") + "Z").getTime()
           : now;
         const elapsedSecs = Math.floor((now - spawned) / 1000);
-        console.log(`${r.status}:${r.specialist}:${r.childSessionKey}:${elapsedSecs}`);
+        console.log(`${r.status}:${r.specialist_name}:${r.child_session_key}:${elapsedSecs}`);
       }
       if (rows.length === 0) console.log("NONE");
     } else if (cmd === "specialist-done") {
@@ -187,10 +204,14 @@ function main() {
       const specialist = flags["specialist"];
       if (!secId || !specialist)
         throw new Error("--sec-id and --specialist required");
+      const active = getActiveJobForSecId(db, secId, ["running"]);
+      if (!active) {
+        throw new Error(`no running job for sec_id=${secId}`);
+      }
       db.prepare(
-        `UPDATE pending_enrichments SET status='DONE', completed_at=datetime('now')
-         WHERE sec_id=? AND specialist=?`,
-      ).run(secId, specialist);
+        `UPDATE enrichment_specialist_runs SET status='DONE', completed_at=datetime('now')
+         WHERE job_id=? AND specialist_name=?`,
+      ).run(active.job_id, specialist);
       console.log(`SPECIALIST_DONE:${secId}:${specialist}`);
     } else if (cmd === "specialist-fail") {
       const secId = Number(flags["sec-id"]);
@@ -198,17 +219,22 @@ function main() {
       const error = flags["error"] || "timeout or no response";
       if (!secId || !specialist)
         throw new Error("--sec-id and --specialist required");
+      const active = getActiveJobForSecId(db, secId, ["running"]);
+      if (!active) {
+        throw new Error(`no running job for sec_id=${secId}`);
+      }
       db.prepare(
-        `UPDATE pending_enrichments SET status='FAILED', completed_at=datetime('now'), error=?
-         WHERE sec_id=? AND specialist=?`,
-      ).run(error, secId, specialist);
-      // Also log to error table
-      const res = db
-        .prepare(
-          `INSERT INTO enrichment_errors (sec_id, specialist, error_type, error_message, logged_at)
-         VALUES (?, ?, 'specialist_failed', ?, datetime('now'))`,
-        )
-        .run(secId, specialist, error);
+        `UPDATE enrichment_specialist_runs SET status='FAILED', completed_at=datetime('now'), error=?
+         WHERE job_id=? AND specialist_name=?`,
+      ).run(error, active.job_id, specialist);
+      db.prepare(
+        `INSERT INTO enrichment_events (job_id, event_type, message, context_json, created_at)
+         VALUES (?, 'specialist_failed', ?, ?, datetime('now'))`,
+      ).run(
+        active.job_id,
+        String(error),
+        JSON.stringify({ sec_id: secId, specialist }),
+      );
       console.log(`SPECIALIST_FAILED:${secId}:${specialist}`);
     } else if (cmd === "log-error") {
       const secId = flags["sec-id"] ? Number(flags["sec-id"]) : null;
@@ -216,13 +242,20 @@ function main() {
       const errorType = flags["error-type"] || "unknown";
       const message = flags["message"] || "";
       const context = flags["context"] || null;
-      const res = db
-        .prepare(
-          `INSERT INTO enrichment_errors (sec_id, specialist, error_type, error_message, context_json, logged_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'))`,
-        )
-        .run(secId, specialist, errorType, message, context);
-      console.log(`ERROR_LOGGED:${res.lastInsertRowid}`);
+      let jobId = null;
+      if (secId) {
+        const active = getActiveJobForSecId(db, secId, ["running", "queued", "failed", "done"]);
+        jobId = active?.job_id || null;
+      }
+      const composedContext = JSON.stringify({
+        specialist,
+        context: context || null,
+      });
+      const res = db.prepare(
+        `INSERT INTO enrichment_events (job_id, event_type, message, context_json, created_at)
+         VALUES (?, ?, ?, ?, datetime('now'))`,
+      ).run(jobId, errorType, message, composedContext);
+      console.log(`ERROR_LOGGED:${res.lastInsertRowid || 0}`);
     } else {
       throw new Error(`Unknown subcommand: ${cmd}`);
     }

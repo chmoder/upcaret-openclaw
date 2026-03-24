@@ -4,7 +4,7 @@
 
 Use this for:
 
-- **`openclaw agents add … --model anthropic/claude-haiku-4-5`** (see `npm run setup:openclaw`)
+- **`openclaw agents add … --model anthropic/claude-haiku-4-5`**
 - **`agents.defaults.model.primary`** in **`openclaw.json`** when configuring the gateway
 
 Do **not** standardize on **Opus** for this skill’s documented install — if an environment still has **`claude-opus-*`** as the default, change it to **`anthropic/claude-haiku-4-5`** unless you have a specific reason to keep a heavier model.

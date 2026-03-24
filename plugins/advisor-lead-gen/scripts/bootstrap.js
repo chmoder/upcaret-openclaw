@@ -10,6 +10,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
@@ -28,10 +29,9 @@ const REQUIRED_PATHS = [
   "scripts/enqueue-enrich.js",
   "scripts/record-enrichment.js",
   "scripts/save-enrichment.js",
-  "scripts/dispatch-cron.js",
+  "scripts/engine-db.js",
   "scripts/db-init.js",
   "scripts/status-dashboard.js",
-  "scripts/env.js",
   "agents/profile.md",
   "agents/scorer.md",
 ];
@@ -45,7 +45,75 @@ function checkNodeSqlite() {
   }
 }
 
+function parseArgs(argv) {
+  const args = argv.slice(2);
+  return {
+    applyOpenclawConfig: args.includes("--apply-openclaw-config"),
+    maxChildrenPerAgent: (() => {
+      const i = args.indexOf("--max-children-per-agent");
+      if (i !== -1 && args[i + 1]) return parseInt(args[i + 1], 10);
+      return 12;
+    })(),
+  };
+}
+
+function ensureMaxChildrenPerAgent({ apply, target }) {
+  const minRecommended = 10;
+  const desired = Number.isFinite(target) ? target : 12;
+
+  const read = spawnSync(
+    "openclaw",
+    ["config", "print", "--json"],
+    { encoding: "utf8" },
+  );
+  if (read.error) {
+    console.log("WARN OpenClaw CLI not found; skipping sub-agent limit check.");
+    return;
+  }
+
+  let cfg = null;
+  try {
+    cfg = JSON.parse(String(read.stdout || "{}"));
+  } catch {
+    console.log("WARN Could not parse `openclaw config print --json`; skipping sub-agent limit check.");
+    return;
+  }
+
+  const current = Number(
+    cfg?.agents?.defaults?.subagents?.maxChildrenPerAgent ?? 5,
+  );
+  if (Number.isFinite(current) && current >= minRecommended) {
+    console.log(`OK  OpenClaw sub-agent limit: agents.defaults.subagents.maxChildrenPerAgent=${current}`);
+    return;
+  }
+
+  const msg =
+    `WARN OpenClaw sub-agent limit is too low for advisor enrichment (needs >=${minRecommended}; found ${Number.isFinite(current) ? current : "unknown"}).`;
+  console.log(msg);
+  console.log("     Without this you may see: gateway max active children limit reached (5/5)");
+  console.log(`     Fix: openclaw config set agents.defaults.subagents.maxChildrenPerAgent ${desired}`);
+  console.log("     Then: openclaw gateway restart");
+
+  if (!apply) return;
+
+  const set = spawnSync(
+    "openclaw",
+    ["config", "set", "agents.defaults.subagents.maxChildrenPerAgent", String(desired)],
+    { encoding: "utf8" },
+  );
+  if (set.status === 0) {
+    console.log(`✅ Applied: agents.defaults.subagents.maxChildrenPerAgent=${desired} (restart gateway to apply)`);
+  } else {
+    console.log("WARN Failed to apply OpenClaw config automatically.");
+    const out = String(set.stdout || "").trim();
+    const err = String(set.stderr || "").trim();
+    if (err) console.log(err.slice(0, 2000));
+    else if (out) console.log(out.slice(0, 2000));
+  }
+}
+
 function main() {
+  const opts = parseArgs(process.argv);
   console.log("🔧 advisor-lead-gen bootstrap (idempotent)\n");
 
   let failed = false;
@@ -94,15 +162,20 @@ function main() {
     process.exit(1);
   }
 
+  console.log("\n🔐 Checking OpenClaw sub-agent limits...\n");
+  ensureMaxChildrenPerAgent({
+    apply: opts.applyOpenclawConfig,
+    target: opts.maxChildrenPerAgent,
+  });
+
   console.log("\n✅ Bootstrap complete. Same command is safe to run again.\n");
   console.log("Next (OpenClaw):");
   console.log(
-    "  • npm run setup:openclaw   # agents, env, default session:advisor-orchestrator, ENRICH/TICK/STATUS, cron example",
+    "  • Install plugins: openclaw plugins install enrichment-engine && openclaw plugins install advisor-lead-gen",
   );
-  console.log("  • Enrichment: set BRAVE_API_KEY (see npm run env:help)");
-  console.log(
-    "  • npm run cron                # start dispatch-cron.js — required, fires ENRICH to the agent",
-  );
+  console.log('  • Set key: openclaw config set env.BRAVE_API_KEY "<key>"');
+  console.log("  • Restart gateway: openclaw gateway restart");
+  console.log("  • Enqueue advisors: npm run enqueue -- --sec-id <ID>");
 }
 
 main();

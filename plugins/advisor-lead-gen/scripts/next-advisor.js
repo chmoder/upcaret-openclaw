@@ -6,7 +6,7 @@
  *   1. Never enriched (enriched_at IS NULL) — highest priority
  *   2. Stale — enriched_at older than ENRICH_THRESHOLD_DAYS (default: 90)
  *
- * Excludes advisors currently queued or running in enrichment_queue.
+ * Excludes advisors currently queued or running in enrichment_jobs (engine DB).
  *
  * Designed to feed the dispatch loop:
  *   node scripts/next-advisor.js
@@ -36,6 +36,7 @@ import { fileURLToPath } from "node:url";
 
 import { dbGet, openDb } from "./db.js";
 import { initSchema } from "./db-init.js";
+import { initEngineSchema, openEngineDb, resolveEngineDbPath } from "./engine-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,51 +66,95 @@ function main() {
   }
 
   const db = openDb(DB_PATH);
+  const engineDb = openEngineDb(resolveEngineDbPath());
   try {
     initSchema(db);
+    initEngineSchema(engineDb);
 
-    const stateFilter = state ? `AND a.state = '${state.replace(/'/g, "''")}'` : '';
+    const stateFilter = state ? `AND ap.state = '${state.replace(/'/g, "''")}'` : "";
+    const blockedSecIds = engineDb
+      .prepare(
+        `SELECT entity_id
+         FROM enrichment_jobs
+         WHERE pipeline_id='advisors' AND status IN ('queued', 'running')`,
+      )
+      .all()
+      .map((r) => Number(String(r.entity_id || "").replace(/^advisor:/, "")))
+      .filter((n) => Number.isFinite(n));
 
-    // Subquery: sec_ids currently blocked (queued or running).
-    const blockedSub = `
-      SELECT sec_id FROM enrichment_queue
-      WHERE status IN ('queued', 'running')
-    `;
+    const blocked = new Set(
+      blockedSecIds,
+    );
+
+    const blockedClause =
+      blockedSecIds.length > 0
+        ? `AND ap.sec_id NOT IN (${blockedSecIds.map(() => "?").join(", ")})`
+        : "";
 
     // Priority 1: never enriched.
-    const neverEnriched = dbGet(db, `
-      SELECT a.sec_id, a.first_name, a.last_name
-      FROM advisors a
-      WHERE a.enriched_at IS NULL
+    const neverEnriched = dbGet(
+      db,
+      `
+      SELECT ap.sec_id, ap.first_name, ap.last_name
+      FROM advisor_profiles ap
+      JOIN entities e ON e.entity_id = ap.entity_id
+      WHERE e.enriched_at IS NULL
         ${stateFilter}
-        AND a.sec_id NOT IN (${blockedSub})
-      ORDER BY a.sec_id ASC
+        ${blockedClause}
+      ORDER BY ap.sec_id ASC
       LIMIT 1
-    `);
+      `,
+      blockedSecIds,
+    );
     if (neverEnriched) {
       console.log(`NEXT:${neverEnriched.sec_id}`);
       return;
     }
 
     // Priority 2: stale (enriched_at older than threshold).
-    const stale = dbGet(db, `
-      SELECT a.sec_id
-      FROM advisors a
-      WHERE a.enriched_at IS NOT NULL
+    const stale = dbGet(
+      db,
+      `
+      SELECT ap.sec_id
+      FROM advisor_profiles ap
+      JOIN entities e ON e.entity_id = ap.entity_id
+      WHERE e.enriched_at IS NOT NULL
         ${stateFilter}
-        AND a.sec_id NOT IN (${blockedSub})
-        AND datetime(a.enriched_at) < datetime('now', '-${thresholdDays} days')
-      ORDER BY a.enriched_at ASC
+        AND datetime(e.enriched_at) < datetime('now', '-${thresholdDays} days')
+        ${blockedClause}
+      ORDER BY e.enriched_at ASC
       LIMIT 1
-    `);
+      `,
+      blockedSecIds,
+    );
     if (stale) {
       console.log(`NEXT:${stale.sec_id}`);
       return;
     }
 
-    console.log('NONE:no_advisors_due');
+    // Defensive fallback if SQL filtering gets out of sync with in-memory parsing.
+    // Fetch a batch and skip any that are blocked in-memory.
+    const fallbackRows = db
+      .prepare(
+        `SELECT ap.sec_id
+         FROM advisor_profiles ap
+         JOIN entities e ON e.entity_id = ap.entity_id
+         WHERE (e.enriched_at IS NULL OR datetime(e.enriched_at) < datetime('now', '-${thresholdDays} days'))
+           ${stateFilter}
+         ORDER BY CASE WHEN e.enriched_at IS NULL THEN 0 ELSE 1 END ASC, e.enriched_at ASC, ap.sec_id ASC
+         LIMIT 25`,
+      )
+      .all();
+    const fallback = fallbackRows.find((r) => !blocked.has(Number(r.sec_id)));
+    if (fallback) {
+      console.log(`NEXT:${fallback.sec_id}`);
+      return;
+    }
+
+    console.log("NONE:no_advisors_due");
   } finally {
     db.close();
+    engineDb.close();
   }
 }
 

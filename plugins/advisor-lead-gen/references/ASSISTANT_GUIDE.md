@@ -14,7 +14,7 @@ This skill is used from **chat**. The model (main agent) should **try OpenClaw f
 - **Do not initialize a git repo** or create `.git/` in the skill directory.
 - **Do not create markdown files.** Point the user to existing docs instead.
 - **Report failures honestly.** If exec is unavailable, the CLI is missing, or the SEC API is unreachable, say so and give the user exact steps to resolve it. Never silently work around a failure.
-- **The plugin must be enabled for enrichment to work.** Queued rows sit forever if the `advisor-lead-gen` plugin is disabled or the gateway is not running. After setup, always verify `openclaw plugins list` shows it enabled and restart the gateway.
+- **Both plugins must be enabled for enrichment to work.** Queued rows sit forever if `enrichment-engine` is disabled or the gateway is not running. After setup, always verify `openclaw plugins list` shows `enrichment-engine` and `advisor-lead-gen` enabled and restart the gateway.
 - **Never tell the user to configure ACP, Discord, or Slack to enable enrichment.** Errors from `sessions_spawn` (including "ACP not configured") mean that approach is wrong — not that enrichment is impossible. The exec path (`openclaw agent --agent advisor-enrich`) works without ACP and without persistent channels. Use it.
 
 ---
@@ -30,11 +30,8 @@ Say something like: "Found the skill — running bootstrap and setup now." Then 
 **One install location:** `~/.openclaw/extensions/advisor-lead-gen/` (container: `/home/node/.openclaw/extensions/advisor-lead-gen/`). The `advisor-enrich` agent's `--workspace` points here. No separate directory needed.
 
 1. Run `npm run bootstrap` via **exec** (cwd = skill dir). Report pass/fail.
-2. Run `npm run setup:openclaw` via **exec**; read the output and execute the printed `openclaw agents add advisor-enrich --workspace <dir>` command. If running via Docker, add `-T` to disable TTY: `docker compose run --rm -T openclaw-cli agents add advisor-enrich --workspace /home/node/.openclaw/extensions/advisor-lead-gen`. Do NOT pass `--non-interactive` or `--model` — those flags are not supported in OpenClaw 2026.3+.
-3. **Start the orchestrator session** — run `openclaw agent --agent advisor-enrich --message STATUS --timeout 60` via exec. This creates the advisor-enrich agent session. If exec is unavailable, tell the user to open a chat with the advisor-enrich agent and send `STATUS`. This step is required before any webchat enrichment will work.
-4. Check if `BRAVE_API_KEY` is already configured: run `openclaw config get env.BRAVE_API_KEY` via exec. If it returns a value, skip to step 5. Otherwise ask the user for the key in chat (one question, not a list of options) then apply: `openclaw config set env.BRAVE_API_KEY "<key>"`.
-5. Restart the gateway so the plugin dispatcher starts: `openclaw gateway restart`.
-6. Verify with `sessions_list` → confirm session with `agentId: "advisor-enrich"` present → `sessions_send ENV` (with `agentId: "advisor-enrich"`).
+2. Install + enable both plugins (gateway host): `openclaw plugins install enrichment-engine && openclaw plugins install advisor-lead-gen && openclaw plugins enable enrichment-engine && openclaw plugins enable advisor-lead-gen`. If `enrichment-engine` is not published in the user’s marketplace/registry yet, install it from an artifact/path instead.
+3. Restart the gateway so the engine dispatcher starts: `openclaw gateway restart`.
 
 If exec is unavailable, skip to **`SETUP_WIZARD.md`** Fallback block and give the user exact copy-paste commands — still no menu.
 
@@ -63,7 +60,7 @@ Look for a session with `agentId: "advisor-enrich"` (key is typically `agent:adv
 
 **Step 2 — Queue the advisor**
 
-Your only job is to write the queue row. The `advisor-lead-gen` plugin handles everything else — it polls the queue, resets the session, and fires ENRICH automatically.
+Your only job is to write the job row. The `enrichment-engine` plugin handles everything else — it polls `enrichment.db`, resets the orchestrator session, and fires ENRICH automatically.
 
 ```bash
 node /home/node/.openclaw/extensions/advisor-lead-gen/scripts/enqueue-enrich.js --sec-id <SEC_ID>
@@ -72,54 +69,41 @@ node /home/node/.openclaw/extensions/advisor-lead-gen/scripts/enqueue-enrich.js 
 
 The dispatcher picks it up within ~5 seconds and fires the ENRICH. Results appear in ~3–5 minutes.
 
-Immediately tell the user: "Queued [Name] for enrichment. The dispatch cron will pick it up within seconds — results appear in ~3–5 minutes. Check status with `npm run status`."
+Immediately tell the user: "Queued [Name] for enrichment. The engine will pick it up within seconds — results appear in ~3–5 minutes. Check status with `npm run status`."
 
-**To queue multiple advisors**, call `enqueue-enrich.js` once per advisor — the cron processes them one at a time:
+**To queue multiple specific advisors**, call `enqueue-enrich.js` once per advisor:
 
 ```bash
 node scripts/enqueue-enrich.js --sec-id <ID1>
 node scripts/enqueue-enrich.js --sec-id <ID2>
-node scripts/enqueue-enrich.js --sec-id <ID3>
 ```
+
+**To queue a batch of advisors due for enrichment** (never enriched first, then stale), use `feed.js` — one command, no looping:
+
+```bash
+node /home/node/.openclaw/extensions/advisor-lead-gen/scripts/feed.js --limit 25
+# with filters:
+node scripts/feed.js --state NE --limit 50
+node scripts/feed.js --threshold-days 30 --limit 100
+# preview without writing jobs:
+node scripts/feed.js --dry-run --limit 25
+```
+
+Output: one `QUEUED:<sec_id>` line per advisor, then `FEED_DONE:{"queued":N,"skipped":N,"stopped":"no_more_due"|"limit_reached"}`. Use this for any user request like "enrich the next N advisors" or "enrich all unenriched Nebraska advisors."
 
 ---
 
-**Step 3 — exec fallback (dispatch cron not running)**
+**Step 3 — if dispatch is not happening**
 
-If `dispatch-cron.js` is not running, queue the advisor and fire manually:
+If jobs stay queued, the usual causes are: the gateway is not running, `enrichment-engine` is disabled, or the orchestrator agent is missing/misconfigured. Tell the user to:
 
-```bash
-node /home/node/.openclaw/extensions/advisor-lead-gen/scripts/enqueue-enrich.js --sec-id <SEC_ID>
-```
-
-```bash
-openclaw agent \
-  --agent advisor-enrich \
-  --message 'ENRICH:<json from dispatch output>' \
-  --timeout 30
-```
-
-The orchestrator will reply that it has started. That is sufficient — do not wait for DONE. Tell the user to check the DB in ~5 minutes.
-
-**To check DB status anytime:**
-
-```
-node -e "const {DatabaseSync}=require('node:sqlite');const db=new DatabaseSync('/home/node/.openclaw/extensions/advisor-lead-gen/advisors.db');console.log(JSON.stringify(db.prepare('SELECT sec_id,name,lead_score,enriched_at FROM advisors WHERE enriched_at IS NOT NULL ORDER BY enriched_at DESC LIMIT 10').all()))"
-```
-
-**Step 4 — if exec is also unavailable**
-
-Tell the user (one short numbered list, no menus):
-
-1. Start the dispatch cron: `node scripts/dispatch-cron.js` (it picks up queued rows automatically)
-2. Or manually: `openclaw agent --agent advisor-enrich --message 'ENRICH:{...}' --timeout 30`
-3. Check the DB in ~5 minutes.
-
-Do not tell the user to configure ACP, Discord, or Slack.
+1. Run `openclaw plugins list` and ensure `enrichment-engine` and `advisor-lead-gen` are enabled.
+2. Restart the gateway: `openclaw gateway restart`.
+3. Check status: `npm run status`.
 
 ### D. Cron jobs must pin the orchestrator agent
 
-## If the user uses **OpenClaw cron**, each job must set **`agentId: "advisor-enrich"`**. Without it, the gateway runs the job as the default agent — wrong workspace. See `npm run setup:openclaw` output for the correct JSON shape.
+If the user uses **OpenClaw cron**, each job must set **`agentId: "advisor-enrich"`**. Without it, the gateway runs the job as the default agent — wrong workspace.
 
 ## 2. When the user asks for SEC download only
 
@@ -139,11 +123,11 @@ When OpenClaw **cannot** create agents, set gateway env, or copy files:
 Give a **short, numbered** list. Do not use vague “configure the server.” Prefer:
 
 1. On the **gateway host** where OpenClaw runs, open a terminal in the skill directory (or path where `advisor-lead-gen` was installed).
-2. Run **`npm run bootstrap`** then **`npm run setup:openclaw`** and execute or hand off the printed commands (`openclaw agents add`, `openclaw config set env.BRAVE_API_KEY`, copy into workspace).
+2. Run **`npm run bootstrap`**, then follow `references/INSTALL_AUTOMATION.md` (install/enable plugins, restart gateway).
 3. Restart or reload the gateway if your install requires it after config changes.
 4. Return to chat and ask again — you will **`sessions_list`** / **`sessions_send`** as in section 1.
 
-Optional: if **`BRAVE_API_KEY`** is the only gap and the user can paste it, suggest they set it via **`openclaw config set env.BRAVE_API_KEY "…"`** or **`openclaw env set`** (per their CLI version).
+Enrichment requires **`BRAVE_API_KEY`** in OpenClaw config (`env` — use **Settings → Environment variables** or `openclaw config set env.BRAVE_API_KEY "..."`). For other optional keys, same pattern: `openclaw config set env.<KEY> "..."`
 
 ---
 

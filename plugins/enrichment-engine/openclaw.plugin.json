@@ -1,0 +1,11 @@
+{
+  "id": "enrichment-engine",
+  "name": "OpenClaw Enrichment Engine",
+  "description": "Generic queue dispatcher for enrichment pipelines.",
+  "version": "0.1.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

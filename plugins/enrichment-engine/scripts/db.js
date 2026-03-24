@@ -1,14 +1,3 @@
-/**
- * db.js — shared SQLite helper using node:sqlite (built-in Node 22.5+).
- * No external npm packages, no sqlite3 CLI required.
- *
- * API:
- *   openDb(dbPath?)  → DatabaseSync instance (remember to call .close() when done)
- *   dbRun(db, sql, params?)  → void
- *   dbAll(db, sql, params?)  → row[]
- *   dbGet(db, sql, params?)  → row | null
- */
-
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
@@ -16,9 +5,8 @@ import { DatabaseSync } from "node:sqlite";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const DEFAULT_DB_PATH = path.join(__dirname, "..", "advisors.db");
+export const DEFAULT_ENGINE_DB_PATH = path.join(__dirname, "..", "enrichment.db");
 
-// Suppress the ExperimentalWarning emitted by node:sqlite on Node 22/24.
 // Guard prevents duplicate listeners if this module is somehow loaded more than once.
 const _sqliteWarnKey = Symbol.for("openclaw:sqlite:warning:suppressed");
 if (!process[_sqliteWarnKey]) {
@@ -28,13 +16,13 @@ if (!process[_sqliteWarnKey]) {
       warning?.name === "ExperimentalWarning" &&
       String(warning?.message || "").includes("SQLite")
     ) {
-      // swallow only this specific warning
+      // Ignore only node:sqlite experimental warning.
     }
   });
 }
 
 export function openDb(dbPath) {
-  const resolved = dbPath || DEFAULT_DB_PATH;
+  const resolved = dbPath || DEFAULT_ENGINE_DB_PATH;
   const db = new DatabaseSync(resolved);
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   return db;

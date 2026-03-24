@@ -1,46 +1,46 @@
 ---
 name: sec-iapd-advisor-enrichment
 description: >
-  Lead gen and advisor enrichment for financial advisors via the SEC IAPD database. Use when the user says "set up the lead gen skill", "install the lead gen skill", "configure advisor enrichment", "set up advisor lead gen", "onboard the advisor skill", "enrich advisors", or asks to pull/enrich SEC IAPD advisors. Handles SEC download, multi-agent enrichment (requires BRAVE_API_KEY), scoring, and export. Install: openclaw plugins install advisor-lead-gen — the plugin directory (~/.openclaw/extensions/advisor-lead-gen/) is also the orchestrator workspace.
+  Lead gen and advisor enrichment for financial advisors via the SEC IAPD database. Use when the user says "set up the lead gen skill", "install the lead gen skill", "configure advisor enrichment", "set up advisor lead gen", "onboard the advisor skill", "enrich advisors", or asks to pull/enrich SEC IAPD advisors. This plugin provides the SEC download, orchestrator skill, specialist agents, and lead scoring. Dispatch is handled by the companion enrichment-engine plugin. Both must be installed (if `enrichment-engine` is not published in the user’s marketplace/registry yet, it must be installed from an artifact/path).
 ---
 
 # SEC IAPD Advisor Enrichment Skill v3.1
 
-**SEC download plus multi-agent enrichment for IAPD advisors.**
+**SEC IAPD domain layer — data download, orchestrator skill, specialist agents, and lead scoring.**
 
-This skill has two modes:
+This plugin provides two capabilities:
 
-- **SEC download only**: pull advisor rows into `advisors.db` with no enrichment keys.
-- **Enrichment**: send advisor payloads to a persistent OpenClaw orchestrator, which fans out to specialist agents and writes scored results back to SQLite.
+- **SEC download**: pull advisor rows into `advisors.db` with no enrichment keys required.
+- **Orchestrator skill**: the `advisor-enrich` agent fans out to specialist sub-agents and writes scored results back to `advisors.db`.
+
+**Dispatch is not part of this plugin.** The `enrichment-engine` plugin owns the job queue (`enrichment.db`) and the poll-loop that picks up queued jobs and spawns the orchestrator. Both plugins must be installed and enabled for enrichment to work.
 
 ## Read This First
 
 Models operating this skill should follow `references/ASSISTANT_GUIDE.md`.
 
-**Install:** `openclaw plugins install advisor-lead-gen` (or say **"set up the lead gen skill"** in chat). The plugin registers `SKILL.md` automatically — no copy to `workspace/skills/` needed. The main agent follows **`references/SETUP_WIZARD.md`** — register `advisor-enrich` (workspace = `~/.openclaw/extensions/advisor-lead-gen/`), collect `BRAVE_API_KEY`, restart gateway. PM2 cron starts automatically on every boot after that. Full packaging checklist: **`references/DISTRIBUTION.md`**. Default model: **`anthropic/claude-haiku-4-5`** (see **`references/MODEL_DEFAULTS.md`**).
+**Install:** `openclaw plugins install enrichment-engine` first, then `openclaw plugins install advisor-lead-gen` (or say **"set up the lead gen skill"** in chat). If `enrichment-engine` is not published in the user’s marketplace/registry, install it from an artifact/path instead (same end state). `enrichment-engine` must be enabled before this plugin — it owns the job queue and dispatcher. The advisor plugin registers `SKILL.md` automatically — no copy to `workspace/skills/` needed. The main agent follows **`references/SETUP_WIZARD.md`** — register `advisor-enrich` (workspace = `~/.openclaw/extensions/advisor-lead-gen/`), restart gateway, and rebuild `advisors.db` (breaking schema change). Full packaging checklist: **`references/DISTRIBUTION.md`**.
 
 Day-to-day:
 
-- **Setup trigger** ("set up the lead gen skill", "install", "onboard"): read `references/ASSISTANT_GUIDE.md` §0 and **execute immediately** — bootstrap, register agent, ask for key. Do not present options.
-- **Enrichment / status**: follow `references/ASSISTANT_GUIDE.md` §1 decision tree exactly. Short form: run `node scripts/enqueue-enrich.js --sec-id <SEC_ID>` — the `dispatch-cron.js` process picks it up within 5 seconds, resets the session, and fires ENRICH automatically. Do NOT send ENRICH or TICK manually. Never use `sessions_spawn` (ACP errors from it are noise). Never mention ACP, Discord, or Slack as requirements.
+- **Setup trigger** ("set up the lead gen skill", "install", "onboard"): read `references/ASSISTANT_GUIDE.md` §0 and **execute immediately** — bootstrap, register agent, restart gateway. Do not present options.
+- **Enrichment / status**: follow `references/ASSISTANT_GUIDE.md` §1 decision tree exactly. Short form: run `node scripts/enqueue-enrich.js --sec-id <SEC_ID>` — this writes an engine job into `enrichment.db` and the `enrichment-engine` plugin dispatches it within a few seconds. Do NOT send ENRICH or TICK manually.
 - **Never** imply enrichment succeeded without a real `DONE:` from the orchestrator.
 - **Never fabricate data, install packages, create files, or workaround failures silently** — see `references/ASSISTANT_GUIDE.md` Hard rules.
 
 ## First-Time Setup
 
-1. Install the plugin: `openclaw plugins install advisor-lead-gen` (or `openclaw plugins install advisor-lead-gen@<version>` from npm). See **`references/SETUP_WIZARD.md`**.
-2. Enable: `openclaw plugins enable advisor-lead-gen`
-3. Set `BRAVE_API_KEY`: `openclaw config set env.BRAVE_API_KEY "<key>"`
-4. Create the orchestrator agent: `openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen`
-5. Restart the gateway: `openclaw gateway restart` — PM2 starts automatically; the dispatch cron is live.
-6. Optionally run `npm run extract` to preload SEC advisor rows into `advisors.db`.
+1. Install both plugins: `openclaw plugins install enrichment-engine` and `openclaw plugins install advisor-lead-gen` (or install `enrichment-engine` from an artifact/path if it is not published yet).
+2. Enable both plugins: `openclaw plugins enable enrichment-engine` and `openclaw plugins enable advisor-lead-gen`
+3. Create the orchestrator agent: `openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen`
+4. Restart the gateway: `openclaw gateway restart` — engine dispatcher becomes live.
+5. Rebuild domain DB and preload SEC advisors: `rm -f advisors.db && npm run bootstrap && npm run extract -- --state <STATE> --limit <N>`.
 
-`npm run setup:openclaw` attempts steps 1–2 when the OpenClaw CLI is available and prints the remaining commands.
 For the full operator boundary, read `references/INSTALL_AUTOMATION.md`.
 
 ## Runtime Contract
 
-Enrichment requires a **persistent OpenClaw agent session** with Session Tools such as `sessions_spawn`, `sessions_yield`, and `sessions_history`. One-off shells or ordinary subagents are not a substitute. For **cron**-driven runs, set **`agentId`** on each job to the orchestrator agent (see `references/OPENCLAW_RUNTIME.md` §3 and `npm run setup:openclaw`). The same doc covers the send/poll lifecycle and `timeoutSeconds: 0` guidance.
+Enrichment requires a **persistent OpenClaw agent session** with Session Tools such as `sessions_spawn`, `sessions_yield`, and `sessions_history`. One-off shells or ordinary subagents are not a substitute. Engine-dispatched runs still require **`agentId`** to resolve the orchestrator correctly (see `references/OPENCLAW_RUNTIME.md`).
 
 The orchestrator is a backend capability. End users should normally interact through a main agent or app flow, not by hand-crafting `sessions_send` calls.
 
@@ -59,7 +59,7 @@ Under the hood, the main agent or routing layer should translate those requests 
 The `advisor-enrich` agent (system prompt: `IDENTITY.md`) is intentionally narrow. It handles:
 
 - `ENRICH:{...advisor_json...}` to start an enrichment run.
-- `TICK` to advance a run that has not finished yet (manual recovery; dispatch-cron.js handles this automatically).
+- `TICK` to advance a run that has not finished yet (manual recovery only).
 - `ENV` and built-in help messages for runtime inspection.
 - `STATUS` (or `/leadgen status`) to return a raw status dashboard payload from `advisors.db`.
 
@@ -103,36 +103,27 @@ When the main agent delegates an advisor to the orchestrator, the orchestrator f
 There are two distinct workflows:
 
 - **SEC download only**: no API keys required.
-- **Enrichment**: requires web discovery and may use optional provider keys.
+- **Enrichment**: **`BRAVE_API_KEY` is required** (Brave Search for web discovery). Other keys below are optional depending on your runtime/tools.
 
 | Variable            | Required | Purpose                                                          |
 | ------------------- | -------- | ---------------------------------------------------------------- |
-| `BRAVE_API_KEY`     | Yes      | Web search for advisor discovery and verification                |
+| `BRAVE_API_KEY`     | Yes      | Brave Search API key for web discovery during enrichment         |
 | `ANTHROPIC_API_KEY` | Optional | LLM use in specialist sub-sessions, if your model setup needs it |
 | `FIRECRAWL_API_KEY` | Optional | Paid fetcher                                                     |
 | `HUNTER_API_KEY`    | Optional | Email verification and enrichment                                |
 
-Show the full env help with:
+Keys are stored in **OpenClaw config** under `env` (same values the gateway sees). Prefer **OpenClaw Settings → Environment variables** in the UI, or the CLI:
 
 ```bash
-npm run env:help
-```
-
-Example setup:
-
-```bash
-export BRAVE_API_KEY="your-brave-key"
-export ANTHROPIC_API_KEY="sk-..."
-export FIRECRAWL_API_KEY="fc-..."
-export HUNTER_API_KEY="hunter-key"
-```
-
-Or inject them through OpenClaw config:
-
-```bash
-openclaw config set env.BRAVE_API_KEY "your-key"
+openclaw config set env.BRAVE_API_KEY "<key>"
 openclaw config set env.ANTHROPIC_API_KEY "sk-..."
+openclaw config set env.FIRECRAWL_API_KEY "fc-..."
+openclaw config set env.HUNTER_API_KEY "hunter-key"
 ```
+
+Optional keys only apply if your runtime/tools use those providers. See `references/SETUP_WIZARD.md` and `references/INSTALL_AUTOMATION.md`.
+
+Shell `export` is only for one-off scripts outside the gateway; plugins and dispatch use config-backed `env`, not your interactive shell.
 
 Never hardcode API keys in tracked files.
 
@@ -156,11 +147,7 @@ Optional: render Markdown directly (useful for humans; chat agents usually prefe
 npm run status -- --format markdown
 ```
 
-Print OpenClaw setup commands:
-
-```bash
-npm run setup:openclaw
-```
+OpenClaw setup: follow `references/INSTALL_AUTOMATION.md`.
 
 SEC download only:
 
@@ -168,10 +155,19 @@ SEC download only:
 node scripts/extract-advisors.js --state NE --limit 50
 ```
 
-Queue one advisor for enrichment (the in-gateway dispatcher picks it up within ~5s):
+Queue one advisor for enrichment (enrichment-engine picks it up within ~5s):
 
 ```bash
 node scripts/enqueue-enrich.js --sec-id 4167394
+```
+
+Batch-enqueue advisors due for enrichment (never enriched first, then stale):
+
+```bash
+npm run feed -- --limit 25
+npm run feed -- --state NE --limit 50
+npm run feed -- --threshold-days 30 --limit 100
+npm run feed -- --dry-run          # preview without writing jobs
 ```
 
 ## Repository Layout
@@ -198,19 +194,17 @@ advisor-lead-gen/
 ├── scripts/
 │   ├── extract-advisors.js
 │   ├── enqueue-enrich.js    ← queue one advisor for enrichment
-│   ├── dispatch-cron.js     ← debug-only CLI poller (not used by the gateway)
+│   ├── feed.js              ← batch-enqueue advisors due for enrichment
+│   ├── engine-db.js         ← helper for enrichment.db access
 │   ├── record-enrichment.js
 │   ├── save-enrichment.js
-│   ├── reset-session.js
 │   ├── next-advisor.js
 │   ├── reset-queue.js
 │   ├── db-init.js
 │   ├── db.js
 │   ├── bootstrap.js
-│   ├── openclaw-setup.js
 │   ├── status-dashboard.js
-│   ├── env.js
-│   └── env-help.js
+│   └── check-skill-layout.js
 └── references/
     ├── ASSISTANT_GUIDE.md
     ├── INSTALL_AUTOMATION.md
@@ -223,17 +217,22 @@ advisor-lead-gen/
 
 ## Data And Monitoring
 
-All runtime data is stored in `advisors.db`, which is created or upgraded by `npm run db:init` and by orchestrator startup checks.
+Runtime data is split across two DBs with distinct ownership:
 
-Important tables include:
+| DB | Owner plugin | Purpose |
+|---|---|---|
+| `advisors.db` | **advisor-lead-gen** | Domain records: entities, advisor_profiles, findings, lead scores |
+| `enrichment.db` | **enrichment-engine** | Job queue: enrichment_pipelines, enrichment_jobs, specialist runs, events |
 
-- `advisors` for core advisor records, enrichment timestamps, and lead scores.
-- `advisor_findings` for extracted findings with confidence and source data.
-- `pending_enrichments` for per-specialist run state while enrichment is in progress.
+Key tables in `advisors.db`:
+
+- `entities` — core advisor entities, latest enrichment timestamps, and lead scores.
+- `advisor_profiles` — SEC IAPD fields tied to each entity.
+- `findings` — extracted findings with confidence and source data.
 
 Keep `advisors.db` as local runtime data. Do not commit real advisor data or secrets.
 
-The detailed schema and any SQL-level monitoring examples should live with the implementation, especially `scripts/db-init.js` and the runtime references, rather than in this top-level skill file.
+The detailed schema lives in `scripts/db-init.js` (advisors.db) and in the enrichment-engine plugin's `scripts/db-init.js` (enrichment.db).
 
 ## Cost
 
@@ -252,11 +251,11 @@ This skill uses **`node:sqlite`** — a built-in Node.js module available from N
 
 ### Queue is stuck / enrichment never starts
 
-The queue is drained by the plugin’s **in-gateway dispatcher service**. If a queued row never starts:
+The queue is drained by the **enrichment-engine** plugin’s dispatcher service. If a queued row never starts:
 
-- Verify the plugin is enabled: `openclaw plugins list` should show `advisor-lead-gen` enabled.
-- Restart the gateway and check logs for `SETUP ERRORS` from `advisor-lead-gen` (missing `BRAVE_API_KEY`, missing files, DB init failures, etc.).
-- If a row is stuck in `running` for a long time, the dispatcher will mark it `failed` after the stale threshold and continue.
+- Verify both plugins are enabled: `openclaw plugins list` should show `enrichment-engine` and `advisor-lead-gen` enabled.
+- Restart the gateway and check logs for `SETUP ERRORS` from either plugin.
+- If a job is stuck in `running` for a long time, engine stale detection marks it `failed` and moves on.
 
 ### Long-Running Jobs And Disconnected Sessions
 

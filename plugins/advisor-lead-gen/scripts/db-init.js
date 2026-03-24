@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
- * SEC IAPD Advisor Database Initialization
- * Ensures SQLite database schema for advisors/findings is present.
+ * Advisor domain database initialization.
+ * Ensures standardized domain tables (`entities`, `findings`) are present, plus
+ * an advisor-specific SEC extension table (`advisor_profiles`).
  * Safe to run repeatedly (idempotent).
  *
  * Uses node:sqlite (built-in Node 22.5+) — no sqlite3 CLI required.
@@ -10,24 +11,31 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { dbAll, dbRun, openDb } from "./db.js";
+import { openDb } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const dbPath = path.join(__dirname, "..", "advisors.db");
 
-function ensureColumn(db, table, column, definition) {
-  const cols = dbAll(db, `PRAGMA table_info(${table});`).map((c) => c.name);
-  if (!cols.includes(column)) {
-    dbRun(db, `ALTER TABLE ${table} ADD COLUMN ${column} ${definition};`);
-    console.log(`✅ Column added: ${table}.${column}`);
-  }
-}
-
 export function initSchema(db) {
   db.exec(`
-    CREATE TABLE IF NOT EXISTS advisors (
-      sec_id INTEGER PRIMARY KEY,
+    CREATE TABLE IF NOT EXISTS entities (
+      entity_id TEXT PRIMARY KEY,
+      entity_type TEXT NOT NULL,
+      display_name TEXT,
+      source_system TEXT,
+      source_key TEXT,
+      enriched_at DATETIME,
+      lead_score INTEGER DEFAULT 0,
+      lead_score_reason TEXT,
+      validation_status TEXT DEFAULT 'pending',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS advisor_profiles (
+      entity_id TEXT PRIMARY KEY,
+      sec_id INTEGER NOT NULL UNIQUE,
       first_name TEXT NOT NULL,
       middle_name TEXT,
       last_name TEXT NOT NULL,
@@ -44,21 +52,14 @@ export function initSchema(db) {
       employment_count INTEGER,
       last_updated_iapd TEXT,
       raw_employment_data TEXT,
-      email TEXT,
-      phone TEXT,
-      firm_website TEXT,
-      linkedin_url TEXT,
-      linkedin_handle TEXT,
-      lead_score INTEGER DEFAULT 0,
-      lead_score_reason TEXT,
-      validation_status TEXT DEFAULT 'pending',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      enriched_at DATETIME
+      FOREIGN KEY(entity_id) REFERENCES entities(entity_id)
     );
-    CREATE TABLE IF NOT EXISTS advisor_findings (
+
+    CREATE TABLE IF NOT EXISTS findings (
       finding_id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sec_id INTEGER NOT NULL,
+      entity_id TEXT NOT NULL,
       finding_type TEXT NOT NULL,
       finding_value TEXT,
       source_name TEXT,
@@ -68,70 +69,17 @@ export function initSchema(db) {
       confidence TEXT DEFAULT 'medium',
       is_trigger_event INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY(sec_id) REFERENCES advisors(sec_id),
-      UNIQUE(sec_id, finding_type, finding_value, agent_name)
+      FOREIGN KEY(entity_id) REFERENCES entities(entity_id),
+      UNIQUE(entity_id, finding_type, finding_value, agent_name)
     );
-    CREATE TABLE IF NOT EXISTS pending_enrichments (
-      sec_id INTEGER NOT NULL,
-      specialist TEXT NOT NULL,
-      childSessionKey TEXT NOT NULL,
-      runId TEXT,
-      advisor_json TEXT,
-      result_json TEXT,
-      spawned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      completed_at DATETIME,
-      status TEXT NOT NULL DEFAULT 'PENDING',
-      error TEXT,
-      PRIMARY KEY (sec_id, specialist)
-    );
-    CREATE TABLE IF NOT EXISTS enrichment_queue (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sec_id INTEGER NOT NULL,
-      advisor_json TEXT,
-      status TEXT NOT NULL DEFAULT 'queued',
-      queued_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      started_at DATETIME,
-      completed_at DATETIME,
-      lead_score INTEGER,
-      error TEXT,
-      FOREIGN KEY(sec_id) REFERENCES advisors(sec_id)
-    );
-    CREATE TABLE IF NOT EXISTS enrichment_errors (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sec_id INTEGER,
-      specialist TEXT,
-      error_type TEXT NOT NULL,
-      error_message TEXT,
-      context_json TEXT,
-      logged_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE INDEX IF NOT EXISTS idx_advisors_enriched_at ON advisors(enriched_at);
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_findings_dedup ON advisor_findings(sec_id, finding_type, finding_value, agent_name);
-    CREATE INDEX IF NOT EXISTS idx_findings_sec_type ON advisor_findings(sec_id, finding_type);
-    CREATE INDEX IF NOT EXISTS idx_pending_enrichments_status ON pending_enrichments(status);
-    CREATE INDEX IF NOT EXISTS idx_pending_enrichments_spawned ON pending_enrichments(spawned_at);
-    CREATE INDEX IF NOT EXISTS idx_enrichment_queue_status ON enrichment_queue(status);
-    CREATE INDEX IF NOT EXISTS idx_enrichment_queue_sec_id ON enrichment_queue(sec_id);
-    CREATE INDEX IF NOT EXISTS idx_enrichment_errors_logged_at ON enrichment_errors(logged_at);
+
+    CREATE INDEX IF NOT EXISTS idx_entities_type ON entities(entity_type);
+    CREATE INDEX IF NOT EXISTS idx_entities_enriched_at ON entities(enriched_at);
+    CREATE INDEX IF NOT EXISTS idx_advisor_profiles_sec_id ON advisor_profiles(sec_id);
+    CREATE INDEX IF NOT EXISTS idx_advisor_profiles_state ON advisor_profiles(state);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_findings_dedup ON findings(entity_id, finding_type, finding_value, agent_name);
+    CREATE INDEX IF NOT EXISTS idx_findings_entity_type ON findings(entity_id, finding_type);
   `);
-
-  // Migrations for older local DBs.
-  ensureColumn(db, 'advisor_findings', 'agent_name', 'TEXT');
-  ensureColumn(db, 'advisor_findings', 'is_trigger_event', 'INTEGER DEFAULT 0');
-  ensureColumn(db, 'advisors', 'created_at', 'DATETIME');
-
-  // Drop columns removed in v3.2+ (SQLite >=3.35 supports DROP COLUMN).
-  // Safe to call repeatedly — ignores errors if columns don't exist.
-  for (const col of ['enrichment_notes', 'agents_processed', 'data_hash']) {
-    try {
-      db.exec(`ALTER TABLE advisors DROP COLUMN ${col}`);
-    } catch (_) { /* column already gone or SQLite version too old — ignore */ }
-  }
-  for (const col of ['data_hash']) {
-    try {
-      db.exec(`ALTER TABLE enrichment_queue DROP COLUMN ${col}`);
-    } catch (_) { /* column already gone or SQLite version too old — ignore */ }
-  }
 }
 
 const isMain =
@@ -140,18 +88,11 @@ const isMain =
 
 if (isMain) {
   const dbExisted = fs.existsSync(dbPath);
-  console.log(dbExisted ? '✅ Database already exists, verifying schema...\n' : '📦 Creating advisor database...\n');
 
   const db = openDb(dbPath);
   try {
     initSchema(db);
-    console.log('✅ Table ensured: advisors');
-    console.log('✅ Table ensured: advisor_findings');
-    console.log('✅ Table ensured: pending_enrichments');
-    console.log('✅ Table ensured: enrichment_queue');
-    console.log('✅ Table ensured: enrichment_errors');
-    console.log('\n✅ Database schema ready at: ' + dbPath);
-    console.log('   Use extract-advisors.js to sync SEC data');
+    console.log(`${dbExisted ? "OK" : "CREATED"}:${dbPath}`);
   } catch (err) {
     console.error(`❌ Database initialization failed: ${err.message}`);
     process.exit(1);

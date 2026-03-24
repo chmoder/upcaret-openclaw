@@ -2,25 +2,16 @@
 /**
  * enqueue-enrich.js — Queue one specific advisor for enrichment.
  *
- * Writes one enrichment_queue row for the given advisor. That is all this
- * script does — it does NOT send ENRICH to the agent.
- *
- * When the OpenClaw gateway is running with the advisor-lead-gen plugin enabled,
- * the in-gateway dispatcher service will pick up queued rows automatically.
- *
- * Typical usage:
- *   node scripts/enqueue-enrich.js --sec-id 4167394
- *   # → QUEUED:4167394 (gateway dispatcher picks it up within a few seconds)
+ * Writes one enrichment_jobs row in enrichment.db for the given advisor.
+ * This script does NOT send ENRICH directly.
  *
  * Usage:
  *   node scripts/enqueue-enrich.js --sec-id <SEC_ID>
  *
  * Output:
- *   QUEUED:<sec_id>               — row written to enrichment_queue
+ *   QUEUED:<sec_id>               — job written to enrichment_jobs
  *   SKIP:<sec_id>:already_active  — already queued or running, do nothing
  *   ERROR:<message>               — advisor not found or DB error
- *
- * Uses node:sqlite (built-in Node 22.5+) — no npm install required.
  */
 
 import path from "node:path";
@@ -28,6 +19,14 @@ import { fileURLToPath } from "node:url";
 
 import { dbGet, openDb } from "./db.js";
 import { initSchema } from "./db-init.js";
+import {
+  advisorEntityId,
+  ensureAdvisorPipeline,
+  initEngineSchema,
+  newJobId,
+  openEngineDb,
+  resolveEngineDbPath,
+} from "./engine-db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -54,25 +53,33 @@ function main() {
   }
 
   const db = openDb(DB_PATH);
+  const engineDbPath = resolveEngineDbPath();
+  const engineDb = openEngineDb(engineDbPath);
   try {
     initSchema(db);
+    initEngineSchema(engineDb);
+    ensureAdvisorPipeline(engineDb);
 
-    // Skip if this advisor is already queued or running.
-    const active = dbGet(
-      db,
-      `SELECT status FROM enrichment_queue WHERE sec_id = ? AND status IN ('queued','running')`,
-      [secId],
-    );
+    const entityId = advisorEntityId(secId);
+    const active = engineDb
+      .prepare(
+        `SELECT status
+         FROM enrichment_jobs
+         WHERE pipeline_id='advisors' AND entity_id=? AND status IN ('queued','running')
+         ORDER BY queued_at DESC
+         LIMIT 1`,
+      )
+      .get(entityId);
     if (active) {
       console.log(`SKIP:${secId}:already_active (status=${active.status})`);
       return;
     }
 
-    // Look up the advisor.
     const a = dbGet(
       db,
-      `SELECT sec_id, first_name, last_name, firm_name, city, state
-       FROM advisors WHERE sec_id = ?`,
+      `SELECT ap.sec_id, ap.first_name, ap.last_name, ap.firm_name, ap.city, ap.state
+       FROM advisor_profiles ap
+       WHERE ap.sec_id = ?`,
       [secId],
     );
     if (!a) {
@@ -89,16 +96,21 @@ function main() {
       state: a.state || "",
       crd: String(a.sec_id),
     };
-    const json = JSON.stringify(payload);
 
-    db.prepare(
-      `INSERT INTO enrichment_queue (sec_id, advisor_json, status, queued_at)
-       VALUES (?, ?, 'queued', datetime('now'))`,
-    ).run(Number(a.sec_id), json);
+    const agentId = process.env.ADVISOR_ORCH_AGENT_ID || "advisor-enrich";
+    engineDb
+      .prepare(
+        `INSERT INTO enrichment_jobs (
+          job_id, pipeline_id, entity_type, entity_id, payload_json,
+          orchestrator_agent_id, message_prefix, status, queued_at
+         ) VALUES (?, 'advisors', 'advisor', ?, ?, ?, 'ENRICH', 'queued', datetime('now'))`,
+      )
+      .run(newJobId(), entityId, JSON.stringify(payload), agentId);
 
     console.log(`QUEUED:${a.sec_id}`);
   } finally {
     db.close();
+    engineDb.close();
   }
 }
 

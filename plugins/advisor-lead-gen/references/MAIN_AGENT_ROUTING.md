@@ -33,6 +33,7 @@ In OpenClaw, the **main agent** is the primary agent you talk to; its direct cha
 1. Check `sessions_list` to see if a session for the orchestrator already exists. If nothing shows up, that is fine — `sessions_send` with `agentId` creates the session on first use. Do **not** attempt `sessions_spawn` as a workaround.
 
 2. Send enrichment (fire-and-forget):
+
    ```
    sessions_send({
      sessionKey: "<key from sessions_list for agentId advisor-enrich>",
@@ -43,13 +44,16 @@ In OpenClaw, the **main agent** is the primary agent you talk to; its direct cha
    ```
 
 3. Poll with **repeated** `TICK` until `DONE:{...}` appears in history:
+
    ```
    sessions_send({ sessionKey: "<key from sessions_list for agentId advisor-enrich>", agentId: "advisor-enrich", message: "TICK", timeoutSeconds: 0 })
    sessions_history({ sessionKey: "<key from sessions_list for agentId advisor-enrich>", limit: 10 })
    ```
+
    Repeat every 2–3 seconds. Stop when the latest assistant message in history contains `DONE:`.
 
 4. For env/config troubleshooting:
+
    ```
    sessions_send({ sessionKey: "<key from sessions_list for agentId advisor-enrich>", agentId: "advisor-enrich", message: "ENV", timeoutSeconds: 0 })
    ```
@@ -59,5 +63,5 @@ In OpenClaw, the **main agent** is the primary agent you talk to; its direct cha
 ## Error Handling
 
 - If the orchestrator session is missing, instruct operator to create it.
-- If required env (`BRAVE_API_KEY`) is missing, return a clear setup error.
+- If required gateway config is missing (`env.BRAVE_API_KEY` / **BRAVE_API_KEY** in Settings), return a clear setup error.
 - If partial failures occur, report success/failed counts and suggest `/leadgen retry failed`.
