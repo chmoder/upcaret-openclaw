@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-import { openDb } from "./db.js";
+import { openDb, resolveDomainDbPath } from "./db.js";
 import { initSchema } from "./db-init.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -149,11 +149,11 @@ function main() {
 
   console.log("\n📦 Running db:init (idempotent)...\n");
   try {
-    const dbPath = path.join(ROOT, "advisors.db");
+    const dbPath = resolveDomainDbPath();
     const db = openDb(dbPath);
     try {
       initSchema(db);
-      console.log("✅ Schema ready: advisors.db");
+      console.log(`✅ Schema ready: ${dbPath}`);
     } finally {
       db.close();
     }

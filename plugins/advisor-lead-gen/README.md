@@ -31,6 +31,8 @@ openclaw plugins enable advisor-lead-gen
 # Required for advisor enrichment (10 specialists):
 # Without this you may see: "gateway max active children limit reached (5/5)"
 openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
+# Optional override if you do NOT want the default DB location:
+# openclaw config set env.ADVISOR_DOMAIN_DB_PATH "/absolute/path/to/advisors.db"
 openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen
 openclaw gateway restart
 ```
@@ -45,6 +47,13 @@ npm run bootstrap
 # npm run bootstrap -- --apply-openclaw-config
 npm run extract -- --state <STATE> --limit <N>
 ```
+
+## Where the domain DB lives
+
+- Default: `~/.openclaw/advisor-lead-gen/advisors.db`
+- Explicit override: set `env.ADVISOR_DOMAIN_DB_PATH` in OpenClaw config (for example, `plugins/advisor-lead-gen/advisors.db` during local development)
+
+All domain scripts (`bootstrap`, `extract`, `enqueue`, `feed`, `next-advisor`, `status-dashboard`, `save-enrichment`) now resolve the DB path the same way, so extraction and enrichment writes stay in sync.
 
 In chat: **"set up the lead gen skill"** — the agent follows `references/SETUP_WIZARD.md`.
 

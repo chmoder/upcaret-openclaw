@@ -43,6 +43,11 @@ openclaw gateway restart
 
 Set `ENRICHMENT_ENGINE_DB_PATH` explicitly when the gateway uses a non-default state directory so that the engine and all domain plugins resolve to the same file.
 
+For the `advisor-lead-gen` domain plugin, also ensure the domain DB path is consistent between extraction and save phases:
+
+- Default domain DB: `~/.openclaw/advisor-lead-gen/advisors.db`
+- Override (if needed): `openclaw config set env.ADVISOR_DOMAIN_DB_PATH "/absolute/path/to/advisors.db"`
+
 ## Manual DB init
 
 ```bash

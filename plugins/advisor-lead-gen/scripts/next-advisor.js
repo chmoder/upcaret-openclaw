@@ -31,16 +31,10 @@
  * Uses node:sqlite (built-in Node 22.5+) — no npm install required.
  */
 
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { dbGet, openDb } from "./db.js";
 import { initSchema } from "./db-init.js";
 import { initEngineSchema, openEngineDb, resolveEngineDbPath } from "./engine-db.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DB_PATH = path.join(__dirname, "..", "advisors.db");
 const DEFAULT_THRESHOLD_DAYS = 90;
 
 function parseArgs(argv) {
@@ -65,7 +59,7 @@ function main() {
     process.exit(1);
   }
 
-  const db = openDb(DB_PATH);
+  const db = openDb();
   const engineDb = openEngineDb(resolveEngineDbPath());
   try {
     initSchema(db);
@@ -129,25 +123,6 @@ function main() {
     );
     if (stale) {
       console.log(`NEXT:${stale.sec_id}`);
-      return;
-    }
-
-    // Defensive fallback if SQL filtering gets out of sync with in-memory parsing.
-    // Fetch a batch and skip any that are blocked in-memory.
-    const fallbackRows = db
-      .prepare(
-        `SELECT ap.sec_id
-         FROM advisor_profiles ap
-         JOIN entities e ON e.entity_id = ap.entity_id
-         WHERE (e.enriched_at IS NULL OR datetime(e.enriched_at) < datetime('now', '-${thresholdDays} days'))
-           ${stateFilter}
-         ORDER BY CASE WHEN e.enriched_at IS NULL THEN 0 ELSE 1 END ASC, e.enriched_at ASC, ap.sec_id ASC
-         LIMIT 25`,
-      )
-      .all();
-    const fallback = fallbackRows.find((r) => !blocked.has(Number(r.sec_id)));
-    if (fallback) {
-      console.log(`NEXT:${fallback.sec_id}`);
       return;
     }
 

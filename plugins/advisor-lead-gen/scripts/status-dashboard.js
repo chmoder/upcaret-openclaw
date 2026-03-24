@@ -1,16 +1,11 @@
 #!/usr/bin/env node
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-import { openDb } from "./db.js";
+import { openDb, resolveDomainDbPath } from "./db.js";
 import { initSchema } from "./db-init.js";
 import { initEngineSchema, openEngineDb, resolveEngineDbPath } from "./engine-db.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const ROOT = path.join(__dirname, "..");
-const DEFAULT_DOMAIN_DB_PATH = path.join(ROOT, "advisors.db");
+const DEFAULT_DOMAIN_DB_PATH = resolveDomainDbPath();
 
 function parseArgs(argv) {
   const args = argv.slice(2);

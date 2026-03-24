@@ -30,9 +30,6 @@
  * Uses node:sqlite (built-in Node 22.5+) — no npm install required.
  */
 
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { dbGet, openDb } from "./db.js";
 import { initSchema } from "./db-init.js";
 import {
@@ -44,9 +41,6 @@ import {
   resolveEngineDbPath,
 } from "./engine-db.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DB_PATH = path.join(__dirname, "..", "advisors.db");
 const DEFAULT_LIMIT = 10;
 const DEFAULT_THRESHOLD_DAYS = 90;
 
@@ -124,7 +118,7 @@ function main() {
 
   const stateFilter = state ? `AND ap.state = '${state.replace(/'/g, "''")}'` : "";
 
-  const db = openDb(DB_PATH);
+  const db = openDb();
   const engineDb = openEngineDb(resolveEngineDbPath());
   try {
     initSchema(db);

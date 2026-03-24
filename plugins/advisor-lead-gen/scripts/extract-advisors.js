@@ -11,14 +11,9 @@
 
 import https from "node:https";
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-import { dbAll, dbGet as _dbGet, dbRun, openDb } from "./db.js";
+import { dbAll, dbGet as _dbGet, dbRun, openDb, resolveDomainDbPath } from "./db.js";
 import { initSchema } from "./db-init.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Parse command-line arguments
 const args = process.argv.slice(2);
@@ -68,10 +63,10 @@ if (!Number.isInteger(limit) || limit < 1) {
   process.exit(1);
 }
 
-const dbPath = path.join(__dirname, "..", "advisors.db");
+const dbPath = resolveDomainDbPath();
 
 // Open a single DB connection for the lifetime of this process run.
-const _db = openDb(dbPath);
+const _db = openDb();
 
 function dbAllLocal(sql, params = []) {
   return dbAll(_db, sql, params);

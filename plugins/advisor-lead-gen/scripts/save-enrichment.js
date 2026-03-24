@@ -27,10 +27,8 @@
  */
 
 import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 
-import { dbGet, dbRun, openDb } from "./db.js";
+import { dbGet, dbRun, openDb, resolveDomainDbPath } from "./db.js";
 import {
   advisorEntityId,
   initEngineSchema,
@@ -39,9 +37,7 @@ import {
 } from "./engine-db.js";
 import { normalizeFindingType } from "./finding-types.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DB_PATH = process.env.ADVISOR_DOMAIN_DB_PATH || path.join(__dirname, "..", "advisors.db");
+const DB_PATH = resolveDomainDbPath();
 const ENGINE_DB_PATH = resolveEngineDbPath();
 
 function main() {
@@ -102,6 +98,16 @@ function main() {
        VALUES (?, 'advisor', 'sec_iapd', ?, datetime('now'), datetime('now'))`,
       [entityId, String(sec_id)],
     );
+    const profileExists = dbGet(
+      db,
+      `SELECT 1 AS ok FROM advisor_profiles WHERE sec_id = ? LIMIT 1`,
+      [Number(sec_id)],
+    );
+    if (!profileExists) {
+      console.error(
+        `WARN: advisor_profiles row missing for sec_id ${sec_id} in ${DB_PATH} (save will continue)`,
+      );
+    }
 
     // Guard: only accept results for an actively running engine job.
     const runningJob = engineDb

@@ -9,6 +9,8 @@
  *   dbGet(db, sql, params?)  → row | null
  */
 
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
@@ -16,7 +18,15 @@ import { DatabaseSync } from "node:sqlite";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export const DEFAULT_DB_PATH = path.join(__dirname, "..", "advisors.db");
+export function resolveDomainDbPath() {
+  const fromEnv = String(process.env.ADVISOR_DOMAIN_DB_PATH || "").trim();
+  if (fromEnv) return fromEnv;
+
+  const openclawHome = process.env.OPENCLAW_HOME || path.join(os.homedir(), ".openclaw");
+  return path.join(openclawHome, "advisor-lead-gen", "advisors.db");
+}
+
+export const DEFAULT_DB_PATH = resolveDomainDbPath();
 
 // Suppress the ExperimentalWarning emitted by node:sqlite on Node 22/24.
 // Guard prevents duplicate listeners if this module is somehow loaded more than once.
@@ -35,6 +45,7 @@ if (!process[_sqliteWarnKey]) {
 
 export function openDb(dbPath) {
   const resolved = dbPath || DEFAULT_DB_PATH;
+  fs.mkdirSync(path.dirname(resolved), { recursive: true });
   const db = new DatabaseSync(resolved);
   db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;");
   return db;

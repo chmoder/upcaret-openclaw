@@ -11,11 +11,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { openDb } from "./db.js";
+import { openDb, resolveDomainDbPath } from "./db.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const dbPath = path.join(__dirname, "..", "advisors.db");
+const dbPath = resolveDomainDbPath();
 
 export function initSchema(db) {
   db.exec(`

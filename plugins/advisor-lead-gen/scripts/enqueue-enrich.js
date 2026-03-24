@@ -14,9 +14,6 @@
  *   ERROR:<message>               — advisor not found or DB error
  */
 
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { dbGet, openDb } from "./db.js";
 import { initSchema } from "./db-init.js";
 import {
@@ -27,10 +24,6 @@ import {
   openEngineDb,
   resolveEngineDbPath,
 } from "./engine-db.js";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DB_PATH = path.join(__dirname, "..", "advisors.db");
 
 function parseArgs(argv) {
   const args = argv.slice(2);
@@ -52,7 +45,7 @@ function main() {
     process.exit(1);
   }
 
-  const db = openDb(DB_PATH);
+  const db = openDb();
   const engineDbPath = resolveEngineDbPath();
   const engineDb = openEngineDb(engineDbPath);
   try {
