@@ -1,6 +1,6 @@
 {
   "name": "advisor-lead-gen",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "description": "SEC IAPD download (extract-advisors.js) + OpenClaw agent-to-agent enrichment (IDENTITY.md orchestrator)",
   "type": "module",
   "main": "scripts/extract-advisors.js",

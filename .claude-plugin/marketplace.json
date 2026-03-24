@@ -1,10 +1,10 @@
 {
-  "name": "UpCaret Private OpenClaw Marketplace",
+  "name": "upCaret Private OpenClaw Marketplace",
   "version": "1.0.0",
   "plugins": [
     {
       "name": "enrichment-engine",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "description": "upCaret Enrichment Engine (proprietary)",
       "source": {
         "type": "path",
@@ -13,7 +13,7 @@
     },
     {
       "name": "advisor-lead-gen",
-      "version": "3.1.0",
+      "version": "3.1.1",
       "description": "upCaret Advisor Lead Gen (proprietary)",
       "source": {
         "type": "path",

@@ -1,6 +1,6 @@
-# UpCaret OpenClaw
+# upCaret OpenClaw
 
-This repository holds OpenClaw **plugins** and related docs for UpCaret. The current stack includes:
+This repository holds OpenClaw **plugins** and related docs for upCaret. The current stack includes:
 
 - **`plugins/enrichment-engine`**: generic enrichment dispatcher/queue engine.
 - **`plugins/advisor-lead-gen`**: SEC IAPD advisor domain plugin and orchestrator assets.
