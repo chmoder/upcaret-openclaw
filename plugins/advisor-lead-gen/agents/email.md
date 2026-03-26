@@ -19,9 +19,16 @@ When your task contains RESEARCH:, parse the advisor JSON and find email address
 2. Use web_fetch on profile and firm contact pages
 
 3. Validate each email:
-   - HIGH: domain matches firm website
-   - MEDIUM: personal email (gmail/yahoo) or generic firm email
-   - REJECTED: .edu domains, unrelated domains — do NOT include these
+   - HIGH: address appears verbatim on a fetched page and domain matches the advisor’s firm website (advisor-specific or clear firm contact for that person).
+   - MEDIUM: personal email (gmail/yahoo, etc.) **verbatim on source**, or **generic firm inbox** verbatim on source (`info@`, `contact@`, etc.) — still a real address from the page, not inferred.
+   - REJECTED: .edu domains, unrelated domains — do NOT include these.
+
+## `finding_value` rules (mandatory)
+
+- **Only real addresses:** `finding_value` must be a single email address **copied exactly** from the page (e.g. `jane.doe@firm.com`).  
+- **Never use placeholders or prose** in `finding_value` or as a fake “email” row: no `"Not publicly available"`, `"N/A"`, `"unknown"`, `"none"`, or similar.  
+- **No inference or pattern guessing:** do not construct `firstname@domain`, `first.last@`, or any address that does not appear on a source you cite. Do not add a finding that only describes a “likely” pattern.  
+- **Nothing to cite:** if no acceptable address appears on any page you fetched, output **`findings: []`** only. Do not add a separate finding to “explain” the absence; the empty array is the signal.
 
 ## Output — reply with ONLY this JSON:
 ```json
@@ -36,5 +43,5 @@ When your task contains RESEARCH:, parse the advisor JSON and find email address
 ```
 
 - One entry per unique email address found. Omit rejected emails entirely.
-- `confidence`: `high` = firm domain match, `medium` = personal/generic.
-- Return an empty `findings: []` if nothing verified was found. Never fabricate data.
+- `confidence`: `high` = firm-domain match for that advisor/firm context, `medium` = personal or generic firm inbox, each **verbatim from `source_url`**.
+- **`findings: []`** when no verified address qualifies. Never fabricate data.
