@@ -79,9 +79,9 @@ When you see `advisor-lead-gen initialized` with **no error lines above it**, se
 
 > **Note:** On subsequent restarts all `ensure*` checks are idempotent — no extra cycles needed.
 
-> **Prerequisite:** `uvx` (from [uv](https://docs.astral.sh/uv/)) must be installed on the host
-> for the `markitdown` MCP server to start. On Umbrel/Docker, add `pip install uv` to your
-> container image or run script before plugin install.
+> **`uvx` install is automated:** on first boot the plugin detects whether `uvx` is present and
+> runs the [uv installer](https://docs.astral.sh/uv/getting-started/installation/) automatically
+> (falling back to `pip install uv`). No manual step needed on Umbrel/Docker.
 
 This starts:
 

@@ -84,6 +84,43 @@ const entry = {
       return { applied: true as const, cfg: patched };
     }
 
+    async function ensureUvInstalled() {
+      // Locations the official installer and Homebrew use.
+      const candidates = [
+        "uvx",
+        `${process.env.HOME ?? "/root"}/.local/bin/uvx`,
+        "/usr/local/bin/uvx",
+        "/opt/homebrew/bin/uvx",
+      ];
+      for (const bin of candidates) {
+        try {
+          await api.runtime.system.runCommandWithTimeout([bin, "--version"], {
+            timeoutMs: 5_000,
+          });
+          return { installed: false };
+        } catch {}
+      }
+      log.info("uvx not found — installing uv (provides uvx)...");
+      // Try the official installer first; fall back to pip.
+      const installAttempts = [
+        ["bash", "-c", "curl -LsSf https://astral.sh/uv/install.sh | sh"],
+        ["bash", "-c", "pip3 install uv"],
+        ["bash", "-c", "pip install uv"],
+      ];
+      for (const cmd of installAttempts) {
+        try {
+          await api.runtime.system.runCommandWithTimeout(cmd, {
+            timeoutMs: 90_000,
+          });
+          log.info("uv installed — uvx is now available.");
+          return { installed: true };
+        } catch {}
+      }
+      throw new Error(
+        "Could not install uv. Install it manually: https://docs.astral.sh/uv/getting-started/installation/",
+      );
+    }
+
     async function ensureMarkitdownMcpServer(cfg: any) {
       const existing = cfg?.mcp?.servers?.markitdown;
       if (existing && typeof existing === "object") {
@@ -232,6 +269,13 @@ const entry = {
         } catch (err: any) {
           log.warn(
             `WARN — unable to auto-apply maxChildrenPerAgent: ${String(err?.message ?? err)}`,
+          );
+        }
+        try {
+          await ensureUvInstalled();
+        } catch (err: any) {
+          log.warn(
+            `WARN — unable to install uv/uvx (markitdown MCP may not start): ${String(err?.message ?? err)}`,
           );
         }
         try {
