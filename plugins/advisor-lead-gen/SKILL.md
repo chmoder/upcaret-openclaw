@@ -25,6 +25,7 @@ Day-to-day:
 
 - **Setup trigger** ("set up the lead gen skill", "install", "onboard"): read `references/ASSISTANT_GUIDE.md` §0 and **execute immediately** — install/enable plugins, set required env, restart gateway. Do not present options.
 - **Enrichment / status**: follow `references/ASSISTANT_GUIDE.md` §1 decision tree exactly. Short form: run `node scripts/enqueue-enrich.js --sec-id <SEC_ID>` — this writes an engine job into `enrichment.db` and the `enrichment-engine` plugin dispatches it within a few seconds. Do NOT send ENRICH or TICK manually.
+- **Specialist crawling behavior**: specialists may follow candidate links discovered from fetched pages, but only with strong information scent and strict caps (default 4 fetches, up to 6 for clear hub pages). They should stop expansion near timeout and avoid low-signal crawling.
 - **Never** imply enrichment succeeded without a real `DONE:` from the orchestrator.
 - **Never fabricate data, install packages, create files, or workaround failures silently** — see `references/ASSISTANT_GUIDE.md` Hard rules.
 

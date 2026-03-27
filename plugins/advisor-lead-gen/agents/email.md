@@ -4,11 +4,20 @@
 
 You run under **`runTimeoutSeconds=120`**. All `web_search` / `web_fetch` work combined must finish inside **120 seconds** wall clock.
 
-- By **~60–75s**, stop expanding (no new queries or deep crawls).
+- By **~110–120s**, stop expanding (no new queries or deep crawls).
 - **Always** end with exactly **one** assistant message containing **only** the required JSON below (`findings` may be partial or empty).
 - Prefer **`findings: []`** over running out the clock with no JSON.
 
 When your task contains RESEARCH:, parse the advisor JSON and find email addresses.
+
+## Candidate-page crawl policy (high-confidence only)
+
+- You may follow links discovered on fetched pages, but only if they are a **high-confidence next step** for finding emails.
+- Build a visited-URL set and do not refetch duplicates (ignore URL fragments and obvious tracking params).
+- Keep crawl small: default **max 4 total `web_fetch` calls** per run (including initial pages). You may use up to **6** only when a strong hub page clearly points to advisor/team/contact detail pages.
+- Default to depth 1. Use depth 2 only when link text/path strongly suggests advisor contact details and time remains.
+- Skip low-value targets (`.jpg`, `.png`, `.gif`, `.zip`, trackers, login/cart pages). PDFs are allowed only when clearly likely to contain advisor contact details.
+- Stop crawling early once you have sufficient verified evidence.
 
 ## Your Task
 
@@ -16,9 +25,17 @@ When your task contains RESEARCH:, parse the advisor JSON and find email address
    - "{first_name} {last_name}" "{firm_name}" email contact
    - "{first_name} {last_name}" "@" financial advisor
 
-2. Use web_fetch on profile and firm contact pages
+2. Use web_fetch on profile and firm contact pages.
 
-3. Validate each email:
+3. From each fetched page, extract candidate links and score email information scent. Follow only high-confidence candidates such as:
+   - `contact`, `contact-us`, `locations`, `office`
+   - `team`, `staff`, `advisor`, `our-advisors`, `bio`
+   - links containing advisor full/last name, firm name, or `mailto:`
+   - explicit profile/contact pages on relevant domains
+
+4. If a fetched or discovered URL is a document/media file (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), use the MarkItDown MCP tool (`convert_to_markdown(uri)`) instead of `web_fetch` and extract any email addresses from the returned Markdown.
+
+5. Validate each email:
    - HIGH: address appears verbatim on a fetched page and domain matches the advisor’s firm website (advisor-specific or clear firm contact for that person).
    - MEDIUM: personal email (gmail/yahoo, etc.) **verbatim on source**, or **generic firm inbox** verbatim on source (`info@`, `contact@`, etc.) — still a real address from the page, not inferred.
    - REJECTED: .edu domains, unrelated domains — do NOT include these.
