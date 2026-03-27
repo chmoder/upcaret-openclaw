@@ -55,7 +55,7 @@ openclaw config set env.BRAVE_API_KEY "<key-from-user>"
 openclaw config set env.FIRECRAWL_API_KEY "<key-from-user>"
 ```
 
-### 3) Restart gateway (expect 2–3 cycles)
+### 3) Restart gateway (expect 3–4 cycles)
 
 The plugin startup auto-configures several settings on first install. Each change
 requires a gateway restart to take effect, so the first-install cycle looks like this:
@@ -63,8 +63,10 @@ requires a gateway restart to take effect, so the first-install cycle looks like
 ```bash
 openclaw gateway restart   # cycle 1 — auto-sets maxChildrenPerAgent=12
 openclaw gateway restart   # cycle 2 — registers markitdown MCP server (with env.PATH)
-openclaw gateway restart   # cycle 3 — pins both plugins in plugins.allow
-# cycle 4+ — fully initialized; logs show:
+openclaw gateway restart   # cycle 3 — enables agents.defaults.sandbox.browser.allowHostControl=true
+openclaw gateway restart   # cycle 4 — pins both plugins in plugins.allow
+# cycle 5+ — fully initialized; logs show:
+#   Browser started (specialists can use browser tool)
 #   advisor-lead-gen initialized (agent=advisor-enrich)
 #   enrichment-engine dispatcher started (poll=5000ms stale=10min ...)
 ```
@@ -83,11 +85,16 @@ When you see `advisor-lead-gen initialized` with **no error lines above it**, se
 > runs the [uv installer](https://docs.astral.sh/uv/getting-started/installation/) automatically
 > (falling back to `pip install uv`). No manual step needed on Umbrel/Docker.
 
+> **Browser (Playwright) runs headless automatically:** `advisor-lead-gen` sets `browser.headless=true`
+> in config on first install. The browser launches itself on first `browser navigate` call — no
+> display, no Xvfb, no manual start required on any platform.
+
 This starts:
 
 - `enrichment-engine` dispatcher service
 - `advisor-lead-gen` initializer service
 - `markitdown` MCP server (lazy — starts on first tool call)
+- OpenClaw browser (Playwright/Chromium — headless, auto-launches on first `browser navigate` call)
 
 ### 4) Rebuild advisor domain DB (breaking schema change)
 
@@ -125,4 +132,5 @@ Keep using `agentId: "advisor-enrich"` when sending orchestrator messages. Sessi
 
 - API secrets remain operator-provided (`BRAVE_API_KEY`, optional `FIRECRAWL_API_KEY`).
 - Data seeding remains operator-driven (`npm run extract -- --state <STATE> --limit <N>`).
-- Gateway restarts (2–3 on first install) are required; subsequent restarts are single-cycle.
+- Gateway restarts (3–4 on first install) are required; subsequent restarts are single-cycle.
+- The browser runs headless (no display required). No extra setup needed on any platform.

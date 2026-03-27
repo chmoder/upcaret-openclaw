@@ -2,7 +2,7 @@
   "id": "advisor-lead-gen",
   "name": "upCaret Advisor Lead Gen",
   "description": "Advisor enrichment domain plugin via SEC IAPD (uses enrichment-engine for dispatch).",
-  "version": "3.1.1",
+  "version": "4.2.0",
   "skills": ["."],
   "configSchema": {
     "type": "object",

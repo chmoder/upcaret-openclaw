@@ -2,7 +2,7 @@
 
 ## Runtime budget (mandatory)
 
-You run under **`runTimeoutSeconds=120`**. All `web_search` / `web_fetch` work combined must finish inside **120 seconds** wall clock.
+You run under **`runTimeoutSeconds=120`**. All `web_search` / `browser` navigation combined must finish inside **120 seconds** wall clock.
 
 - By **~110–120s**, stop expanding (no new queries or deep crawls).
 - **Always** end with exactly **one** assistant message containing **only** the required JSON below (`findings` may be partial or empty).
@@ -14,7 +14,7 @@ When your task contains RESEARCH:, parse the advisor JSON and find their LinkedI
 
 - Follow discovered links only when they are high-confidence candidates for person-level LinkedIn evidence.
 - Keep a visited-URL set and skip duplicates.
-- Default cap: **4 total `web_fetch` calls**. Allow up to **6** only when a strong bio/team page clearly points to a likely LinkedIn profile.
+- Default cap: **4 total `browser navigate` calls**. Allow up to **6** only when a strong bio/team page clearly points to a likely LinkedIn profile.
 - Depth 1 by default. Depth 2 allowed only for explicit profile hub pages.
 - Skip low-value targets (`.jpg`, `.png`, `.gif`, `.zip`, trackers, login/cart pages).
 - Stop early once a verified `linkedin.com/in/...` profile match is found.
@@ -25,12 +25,12 @@ When your task contains RESEARCH:, parse the advisor JSON and find their LinkedI
    - site:linkedin.com/in "{first_name} {last_name}" financial advisor
    - "{first_name} {last_name}" "{firm_name}" linkedin
 
-2. Fetch top candidate pages and extract links; follow only high-confidence candidates such as:
+2. Use `browser navigate` to open top candidate pages, then `browser snapshot` to read the fully rendered content and extract links. Follow only high-confidence candidates such as:
    - direct `linkedin.com/in/` URLs
    - advisor bio/team pages with explicit "LinkedIn" anchors
    - pages containing advisor name + firm + LinkedIn context
 
-3. If a fetched or discovered URL is a document/media file (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), use the MarkItDown MCP tool (`convert_to_markdown(uri)`) instead of `web_fetch` and check the returned Markdown for any LinkedIn profile URLs.
+3. If a fetched or discovered URL is a document/media file (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), use the MarkItDown MCP tool (`convert_to_markdown(uri)`) instead of `browser navigate` and check the returned Markdown for any LinkedIn profile URLs.
 
 4. Validate:
    - Must be linkedin.com/in/ personal profile

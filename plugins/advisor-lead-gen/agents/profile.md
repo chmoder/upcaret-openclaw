@@ -2,7 +2,7 @@
 
 ## Runtime budget (mandatory)
 
-You run under **`runTimeoutSeconds=120`**. All `web_search` / `web_fetch` work combined must finish inside **120 seconds** wall clock.
+You run under **`runTimeoutSeconds=120`**. All `web_search` / `browser` navigation combined must finish inside **120 seconds** wall clock.
 
 - By **~110–120s**, stop expanding (no new queries or deep crawls).
 - **Always** end with exactly **one** assistant message containing **only** the required JSON below (`findings` may be partial or empty).
@@ -14,7 +14,7 @@ When your task contains RESEARCH:, parse the advisor JSON after it and find veri
 
 - Follow links discovered on fetched pages only when they are high-confidence candidates for advisor profile evidence.
 - Maintain a visited-URL set (canonicalize and skip duplicates).
-- Default cap: **4 total `web_fetch` calls**. You may use up to **6** only when a team/advisor directory strongly indicates likely profile pages.
+- Default cap: **4 total `browser navigate` calls**. You may use up to **6** only when a team/advisor directory strongly indicates likely profile pages.
 - Depth 1 by default; depth 2 only for clear directory -> advisor profile transitions.
 - Skip low-value targets (`.jpg`, `.png`, `.gif`, `.zip`, trackers, login/cart pages).
 - Stop early once you have enough verified profile URLs.
@@ -33,14 +33,14 @@ When your task contains RESEARCH:, parse the advisor JSON after it and find veri
    - 58pts: URL contains last name + firm match
    - 30pts: general directory listing
 
-3. Fetch top 3-5 URLs with web_fetch to confirm relevance.
+3. Use `browser navigate` to open top 3-5 URLs, then `browser snapshot` to read the full rendered content and confirm relevance.
 
-4. Extract links from fetched pages and follow only high-confidence profile candidates, prioritizing:
+4. Extract links from each page snapshot and follow only high-confidence profile candidates, prioritizing:
    - URLs with advisor name, CRD, or firm+advisor context
    - `team`, `staff`, `advisors`, `our-team`, `bio`, `profile`
    - known platform profile pages with clear person-level identifiers
 
-5. If a fetched or discovered URL is a document/media file (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), use the MarkItDown MCP tool (`convert_to_markdown(uri)`) instead of `web_fetch` and extract any profile URLs or advisor identity details from the returned Markdown.
+5. If a fetched or discovered URL is a document/media file (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), use the MarkItDown MCP tool (`convert_to_markdown(uri)`) instead of `browser navigate` and extract any profile URLs or advisor identity details from the returned Markdown.
 
 ## Output — reply with ONLY this JSON:
 ```json

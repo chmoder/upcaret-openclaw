@@ -4,7 +4,7 @@ description: >
   Lead gen and advisor enrichment for financial advisors via the SEC IAPD database. Use when the user says "set up the lead gen skill", "install the lead gen skill", "configure advisor enrichment", "set up advisor lead gen", "onboard the advisor skill", "enrich advisors", or asks to pull/enrich SEC IAPD advisors. This plugin provides the SEC download, orchestrator skill, specialist agents, and lead scoring. Dispatch is handled by the companion enrichment-engine plugin. Both must be installed (if `enrichment-engine` is not published in the user’s marketplace/registry yet, it must be installed from an artifact/path).
 ---
 
-# SEC IAPD Advisor Enrichment Skill v3.1
+# SEC IAPD Advisor Enrichment Skill v4.2
 
 **SEC IAPD domain layer — data download, orchestrator skill, specialist agents, and lead scoring.**
 
@@ -25,7 +25,7 @@ Day-to-day:
 
 - **Setup trigger** ("set up the lead gen skill", "install", "onboard"): read `references/ASSISTANT_GUIDE.md` §0 and **execute immediately** — install/enable plugins, set required env, restart gateway. Do not present options.
 - **Enrichment / status**: follow `references/ASSISTANT_GUIDE.md` §1 decision tree exactly. Short form: run `node scripts/enqueue-enrich.js --sec-id <SEC_ID>` — this writes an engine job into `enrichment.db` and the `enrichment-engine` plugin dispatches it within a few seconds. Do NOT send ENRICH or TICK manually.
-- **Specialist crawling behavior**: specialists may follow candidate links discovered from fetched pages, but only with strong information scent and strict caps (default 4 fetches, up to 6 for clear hub pages). They should stop expansion near timeout and avoid low-signal crawling.
+- **Specialist crawling behavior**: specialists use the `browser` tool (`browser navigate` + `browser snapshot`) for full JS-rendered page access. They may follow candidate links discovered from snapshots, but only with strong information scent and strict caps (default 4 `browser navigate` calls, up to 6 for clear hub pages). They should stop expansion near timeout and avoid low-signal crawling.
 - **Never** imply enrichment succeeded without a real `DONE:` from the orchestrator.
 - **Never fabricate data, install packages, create files, or workaround failures silently** — see `references/ASSISTANT_GUIDE.md` Hard rules.
 

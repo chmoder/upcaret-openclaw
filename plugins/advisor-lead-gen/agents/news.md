@@ -2,7 +2,7 @@
 
 ## Runtime budget (mandatory)
 
-You run under **`runTimeoutSeconds=120`**. All `web_search` / `web_fetch` work combined must finish inside **120 seconds** wall clock.
+You run under **`runTimeoutSeconds=120`**. All `web_search` / `browser` navigation combined must finish inside **120 seconds** wall clock.
 
 - By **~110–120s**, stop expanding (no new queries or deep crawls).
 - **Always** end with exactly **one** assistant message containing **only** the required JSON below (`findings` may be partial or empty).
@@ -14,7 +14,7 @@ When your task contains RESEARCH:, parse the advisor JSON and find news mentions
 
 - Follow discovered links only when they are high-confidence candidates for real editorial/news evidence.
 - Keep a visited-URL set and skip duplicates.
-- Default cap: **4 total `web_fetch` calls**. Expand to **6** only when a credible press/news hub clearly links to relevant article details.
+- Default cap: **4 total `browser navigate` calls**. Expand to **6** only when a credible press/news hub clearly links to relevant article details.
 - Depth 1 by default; depth 2 only for clear press index -> article detail transitions.
 - Skip low-value targets (`.jpg`, `.png`, `.gif`, `.zip`, trackers, login/cart pages). Documents are allowed only when likely to contain press releases or media coverage.
 - Stop early once you have enough verified mentions.
@@ -25,12 +25,12 @@ When your task contains RESEARCH:, parse the advisor JSON and find news mentions
    - "{first_name} {last_name}" financial advisor news OR article OR interview
    - "{first_name} {last_name}" "{firm_name}" press OR media OR quoted
 
-2. Fetch high-confidence pages and follow only high-confidence candidate links such as:
+2. Use `browser navigate` to open high-confidence pages, then `browser snapshot` to read the full rendered content. Follow only high-confidence candidate links such as:
    - `news`, `press`, `media`, `insights`, `blog`, `in-the-news`
    - article detail pages with publication/date/headline
    - advisor-name mentions in editorial contexts
 
-3. If a promising source URL points to a document/media file (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), use the MarkItDown MCP tool (`convert_to_markdown(uri)`) on that URL and extract evidence from the returned Markdown. Keep `web_fetch` for normal HTML pages.
+3. If a promising source URL points to a document/media file (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), use the MarkItDown MCP tool (`convert_to_markdown(uri)`) instead of `browser navigate` and extract evidence from the returned Markdown.
 
 4. Only real editorial content (news articles, interviews, press releases). Not directories or listings.
 

@@ -678,9 +678,9 @@ const entry = {
               )
               .all();
             for (const row of orphaned) {
-              await requeueRunning(db, String(row.job_id), "gateway restarted");
+              await markFailed(db, String(row.job_id), "gateway restarted");
               log.warn(
-                `STARTUP_RECOVERY — job=${row.job_id} re-queued (orphaned from previous gateway run)`,
+                `STARTUP_RECOVERY — job=${row.job_id} marked failed (orphaned from previous gateway run — no auto-retry)`,
               );
             }
           } finally {

@@ -2,7 +2,7 @@
 
 ## Runtime budget (mandatory)
 
-You run under **`runTimeoutSeconds=120`**. All `web_search` / `web_fetch` work combined must finish inside **120 seconds** wall clock.
+You run under **`runTimeoutSeconds=120`**. All `web_search` / `browser` navigation combined must finish inside **120 seconds** wall clock.
 
 - By **~110–120s**, stop expanding (no new queries or deep crawls).
 - **Always** end with exactly **one** assistant message containing **only** the required JSON below (`findings` may be partial or empty).
@@ -14,7 +14,7 @@ When your task contains RESEARCH:, parse the advisor JSON and find professional 
 
 - Follow discovered links only when they are high-confidence candidates for credential/designation evidence.
 - Use a visited-URL set and skip duplicates.
-- Default cap: **4 total `web_fetch` calls**. Expand to **6** only for strong profile hubs with clear credential pages/documents.
+- Default cap: **4 total `browser navigate` calls**. Expand to **6** only for strong profile hubs with clear credential pages/documents.
 - Depth 1 by default; depth 2 only for clear profile -> credentials/designations transitions.
 - Skip low-value targets (`.jpg`, `.png`, `.gif`, `.zip`, trackers, login/cart pages). Documents are allowed when clearly credential-related.
 - Stop early once sufficient verified certifications are collected.
@@ -25,11 +25,11 @@ When your task contains RESEARCH:, parse the advisor JSON and find professional 
    - "{first_name} {last_name}" CFP OR CFA OR CPA OR ChFC OR Series advisor
    - "{first_name} {last_name}" "{firm_name}" certifications designations
 
-2. Fetch high-confidence pages and follow only high-confidence candidate links such as:
+2. Use `browser navigate` to open high-confidence pages, then `browser snapshot` to read the full rendered content. Follow only high-confidence candidate links such as:
    - `bio`, `profile`, `about`, `credentials`, `designations`
    - advisor-name pages and firm profile pages that list licenses/designations
 
-3. If certification evidence is in a document/media URL (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), use the MarkItDown MCP tool (`convert_to_markdown(uri)`) to read it and extract only explicit certifications.
+3. If certification evidence is in a document/media URL (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), use the MarkItDown MCP tool (`convert_to_markdown(uri)`) instead of `browser navigate` to read it and extract only explicit certifications.
 
 4. Extract recognized financial designations:
    CFP, CFA, CPA, ChFC, AEP, FIC, CLU, CIMA, Series 63, Series 65, Series 66, Series 7, RIA, etc.

@@ -33,6 +33,18 @@ function secFromEntityId(entityId) {
   return Number.isFinite(n) ? n : null;
 }
 
+function durationLabel(startedAt, completedAt) {
+  if (!startedAt || !completedAt) return null;
+  const start = new Date(String(startedAt).includes("T") ? startedAt : startedAt.replace(" ", "T") + "Z");
+  const end = new Date(String(completedAt).includes("T") ? completedAt : completedAt.replace(" ", "T") + "Z");
+  const ms = end - start;
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const totalSec = Math.round(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
 function buildPayload(opts) {
   const enginePath = resolveEngineDbPath();
   const payload = {
@@ -44,6 +56,7 @@ function buildPayload(opts) {
     engine_db_exists: fs.existsSync(enginePath),
     queue: { queued: 0, running: 0, done: 0, failed: 0 },
     active_enrichment: null,
+    last_completed: null,
     totals: {},
     recent_enriched: [],
     recent_errors: [],
@@ -113,6 +126,76 @@ function buildPayload(opts) {
           status: s.status,
           spawned_at: s.spawned_at || null,
           completed_at: s.completed_at || null,
+          error: s.error || null,
+        })),
+      };
+    }
+
+    const lastDoneJob = engineDb
+      .prepare(
+        `SELECT job_id, entity_id, started_at, completed_at
+         FROM enrichment_jobs
+         WHERE pipeline_id='advisors' AND status='done'
+         ORDER BY completed_at DESC
+         LIMIT 1`,
+      )
+      .get();
+    if (lastDoneJob) {
+      const secId = secFromEntityId(lastDoneJob.entity_id);
+      const advisor = secId
+        ? domainDb
+            .prepare(
+              `SELECT ap.first_name, ap.last_name, ap.firm_name, ap.city, ap.state,
+                      e.lead_score, e.lead_score_reason, e.enriched_at
+               FROM advisor_profiles ap
+               JOIN entities e ON e.entity_id = ap.entity_id
+               WHERE ap.sec_id=? LIMIT 1`,
+            )
+            .get(secId)
+        : null;
+      const specialists = engineDb
+        .prepare(
+          `SELECT specialist_name, status, spawned_at, completed_at, error
+           FROM enrichment_specialist_runs
+           WHERE job_id=?
+           ORDER BY COALESCE(completed_at, spawned_at)`,
+        )
+        .all(lastDoneJob.job_id);
+      const findingCounts = secId
+        ? domainDb
+            .prepare(
+              `SELECT agent_name, COUNT(*) AS c
+               FROM findings
+               WHERE entity_id=?
+               GROUP BY agent_name`,
+            )
+            .all(`advisor:${secId}`)
+        : [];
+      const countByAgent = {};
+      for (const row of findingCounts) {
+        countByAgent[String(row.agent_name || "")] = Number(row.c);
+      }
+      const totalFindings = Object.values(countByAgent).reduce((a, b) => a + b, 0);
+      payload.last_completed = {
+        job_id: lastDoneJob.job_id,
+        sec_id: secId,
+        name: advisor ? [advisor.first_name, advisor.last_name].filter(Boolean).join(" ") : "",
+        firm_name: advisor?.firm_name || "",
+        city: advisor?.city || "",
+        state: advisor?.state || "",
+        lead_score: advisor?.lead_score == null ? null : Number(advisor.lead_score),
+        lead_score_reason: advisor?.lead_score_reason || null,
+        enriched_at: advisor?.enriched_at || lastDoneJob.completed_at || null,
+        started_at: lastDoneJob.started_at || null,
+        completed_at: lastDoneJob.completed_at || null,
+        duration: durationLabel(lastDoneJob.started_at, lastDoneJob.completed_at),
+        total_findings: totalFindings,
+        specialists: specialists.map((s) => ({
+          specialist: s.specialist_name,
+          status: s.status,
+          spawned_at: s.spawned_at || null,
+          completed_at: s.completed_at || null,
+          findings: countByAgent[s.specialist_name] ?? 0,
           error: s.error || null,
         })),
       };
@@ -272,6 +355,34 @@ function renderMarkdown(payload) {
     lines.push("");
     lines.push("No enrichment currently running.");
     lines.push("");
+  }
+
+  if (payload.last_completed) {
+    const lc = payload.last_completed;
+    const scoreLabel = lc.lead_score == null ? "—" : `${lc.lead_score}/5`;
+    const warmth = lc.lead_score == null ? "" : lc.lead_score >= 4 ? " (Hot)" : lc.lead_score === 3 ? " (Warm)" : lc.lead_score >= 2 ? " (Cool)" : " (Cold)";
+    lines.push(`### Last Completed: ${lc.name || lc.sec_id || "Unknown"}`);
+    lines.push("");
+    lines.push(`- **CRD:** ${lc.sec_id || "—"}`);
+    lines.push(`- **Firm:** ${lc.firm_name || "—"}${lc.city ? `, ${lc.city}` : ""}${lc.state ? ` ${lc.state}` : ""}`);
+    lines.push(`- **Score:** ${scoreLabel}${warmth}`);
+    if (lc.lead_score_reason) lines.push(`- **Reason:** ${lc.lead_score_reason}`);
+    lines.push(`- **Duration:** ${lc.duration || "—"}  |  **Findings:** ${lc.total_findings}`);
+    lines.push(`- **Completed:** ${lc.enriched_at || lc.completed_at || "—"}`);
+    lines.push("");
+    if (lc.specialists && lc.specialists.length > 0) {
+      lines.push("| Specialist | Status | Findings | Completed |");
+      lines.push("|---|---|---|---|");
+      for (const s of lc.specialists) {
+        const status = s.status === "DONE" ? "✅" : s.status === "FAILED" ? "❌" : "⏳";
+        const completedTime = s.completed_at
+          ? new Date(String(s.completed_at).includes("T") ? s.completed_at : s.completed_at.replace(" ", "T") + "Z")
+              .toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+          : "—";
+        lines.push(`| ${s.specialist} | ${status} | ${s.findings} | ${completedTime} |`);
+      }
+      lines.push("");
+    }
   }
 
   lines.push("### Advisors");

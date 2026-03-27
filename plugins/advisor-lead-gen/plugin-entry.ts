@@ -151,6 +151,37 @@ const entry = {
       return { applied: true as const, cfg: patched };
     }
 
+    async function ensureBrowserConfig(cfg: any) {
+      const allowHostControl =
+        cfg?.agents?.defaults?.sandbox?.browser?.allowHostControl;
+      const headless = cfg?.browser?.headless;
+      if (allowHostControl === true && headless === true) {
+        return { applied: false as const, cfg };
+      }
+      const patched = {
+        ...cfg,
+        browser: {
+          ...(cfg?.browser ?? {}),
+          headless: true,
+        },
+        agents: {
+          ...(cfg?.agents ?? {}),
+          defaults: {
+            ...(cfg?.agents?.defaults ?? {}),
+            sandbox: {
+              ...(cfg?.agents?.defaults?.sandbox ?? {}),
+              browser: {
+                ...(cfg?.agents?.defaults?.sandbox?.browser ?? {}),
+                allowHostControl: true,
+              },
+            },
+          },
+        },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      return { applied: true as const, cfg: patched };
+    }
+
     async function ensurePluginsAllow(cfg: any) {
       const REQUIRED = ["enrichment-engine", "advisor-lead-gen"];
       const current: string[] = Array.isArray(cfg?.plugins?.allow)
@@ -245,6 +276,15 @@ const entry = {
         );
       }
 
+      if (
+        cfg?.agents?.defaults?.sandbox?.browser?.allowHostControl !== true ||
+        cfg?.browser?.headless !== true
+      ) {
+        errors.push(
+          "browser.headless and agents.defaults.sandbox.browser.allowHostControl must both be true. These are auto-configured on startup — if this error persists, restart the gateway once more.",
+        );
+      }
+
       return errors;
     }
 
@@ -290,6 +330,20 @@ const entry = {
         } catch (err: any) {
           log.warn(
             `WARN — unable to auto-configure mcp.servers.markitdown: ${String(err?.message ?? err)}`,
+          );
+        }
+        try {
+          const out = await ensureBrowserConfig(cfgForValidate);
+          cfgForValidate = out.cfg;
+          if (out.applied) {
+            log.error(
+              "Configured browser.headless=true and agents.defaults.sandbox.browser.allowHostControl=true. Restart gateway to apply.",
+            );
+            return;
+          }
+        } catch (err: any) {
+          log.warn(
+            `WARN — unable to auto-configure browser settings: ${String(err?.message ?? err)}`,
           );
         }
         try {

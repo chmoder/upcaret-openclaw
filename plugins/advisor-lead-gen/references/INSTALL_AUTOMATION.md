@@ -32,7 +32,15 @@ openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
 # If this is unset or below 10, initializer auto-sets it to 12.
 # If your gateway does not hot-reload config, restart once.
 
-# 5) Restart gateway (starts engine dispatcher + advisor initializer)
+# 5) Allow sandboxed specialist subagents to use the host browser (Playwright).
+#    The initializer auto-sets this on first boot — listed here for environments
+#    where you pre-stage config before the first gateway start.
+openclaw config set agents.defaults.sandbox.browser.allowHostControl true
+
+# 6) Restart gateway (starts engine dispatcher + advisor initializer).
+#    On first install expect 3-4 restart cycles while the plugin auto-configures settings.
+#    The plugin sets browser.headless=true automatically — no display or manual browser
+#    start needed on any platform.
 openclaw gateway restart
 ```
 
@@ -75,6 +83,7 @@ This writes `enrichment_jobs` rows in `enrichment.db`. The `enrichment-engine` p
 - Provide API secrets (`BRAVE_API_KEY`, optional `FIRECRAWL_API_KEY`).
 - Choose and run SEC extract scope (`--state`, `--limit`) for your environment.
 - Restart gateway only when your runtime does not pick up config changes live.
+- The browser runs headless — no display required on any platform.
 
 ## Upgrade flow
 
