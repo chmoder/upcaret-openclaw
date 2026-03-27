@@ -32,13 +32,13 @@ const entry = {
       Number.isFinite(POLL_INTERVAL_MS) && POLL_INTERVAL_MS > 0
         ? POLL_INTERVAL_MS
         : 5_000;
-    // Wall-clock cap for a single job in `running` (aligned with DB default
-    // `enrichment_pipelines.stale_minutes` and README). Advisor enrichment uses
-    // ~90s specialist budgets; five minutes total is plenty — beyond that mark failed.
+    // Wall-clock cap for a single job in `running` (aligned with README
+    // defaults). Advisor enrichment uses multi-step specialist orchestration,
+    // and document->Markdown conversions can push total runtime above 5 minutes.
     const staleMs =
       Number.isFinite(STALE_MINUTES) && STALE_MINUTES > 0
         ? STALE_MINUTES * 60_000
-        : 5 * 60_000;
+        : 10 * 60_000;
     const engineDbPath =
       process.env.ENRICHMENT_ENGINE_DB_PATH ||
       join(api.runtime.state.resolveStateDir(), "enrichment", "enrichment.db");

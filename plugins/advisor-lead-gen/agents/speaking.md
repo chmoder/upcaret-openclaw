@@ -2,7 +2,7 @@
 
 ## Runtime budget (mandatory)
 
-You run under **`runTimeoutSeconds=90`**. All `web_search` / `web_fetch` work combined must finish inside **90 seconds** wall clock.
+You run under **`runTimeoutSeconds=120`**. All `web_search` / `web_fetch` work combined must finish inside **120 seconds** wall clock.
 
 - By **~60–75s**, stop expanding (no new queries or deep crawls).
 - **Always** end with exactly **one** assistant message containing **only** the required JSON below (`findings` may be partial or empty).
@@ -16,7 +16,9 @@ When your task contains RESEARCH:, parse the advisor JSON and find speaking enga
    - "{first_name} {last_name}" speaker OR keynote OR panelist OR conference financial
    - "{first_name} {last_name}" "{firm_name}" webinar OR event OR presentation
 
-2. Only include events with a verifiable name, date, or topic where the advisor is individually listed as a speaker.
+2. If an event source is published as a document/media URL (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), run the MarkItDown MCP tool (`convert_to_markdown(uri)`) and validate speaker evidence from the converted Markdown.
+
+3. Only include events with a verifiable name, date, or topic where the advisor is individually listed as a speaker.
 
 ## Output — reply with ONLY this JSON:
 ```json

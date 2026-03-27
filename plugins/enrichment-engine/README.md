@@ -39,7 +39,7 @@ openclaw gateway restart
 | ----------------------------- | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ENRICHMENT_ENGINE_DB_PATH`   | `~/.openclaw/enrichment/enrichment.db` | Shared DB path — must match the setting used by every domain plugin                                                                                                                                      |
 | `ENRICH_ENGINE_INTERVAL_MS`   | `5000`                                 | Poll interval in milliseconds                                                                                                                                                                            |
-| `ENRICH_ENGINE_STALE_MINUTES` | `5`                                    | Minutes (wall clock from `started_at`) before a running job is marked **failed** — applies to all pipelines, including `advisors`. Keeps the queue from hanging when orchestration or specialists stall. |
+| `ENRICH_ENGINE_STALE_MINUTES` | `10`                                   | Minutes (wall clock from `started_at`) before a running job is marked **failed** — applies to all pipelines, including `advisors`. Keeps the queue from hanging when orchestration or specialists stall. |
 
 Set `ENRICHMENT_ENGINE_DB_PATH` explicitly when the gateway uses a non-default state directory so that the engine and all domain plugins resolve to the same file.
 

@@ -27,7 +27,7 @@ Read the output and exit code carefully:
 
 ### Step 2 — Spawn all 10 specialists
 
-Read each specialist instruction file, then spawn specialists **one at a time** (sequentially) using `sessions_spawn` with `mode="run"` and **`runTimeoutSeconds=90`** (hard cap on specialist wall time — they must return JSON before the runtime kills the run).
+Read each specialist instruction file, then spawn specialists **one at a time** (sequentially) using `sessions_spawn` with `mode="run"` and **`runTimeoutSeconds=120`** (hard cap on specialist wall time — they must return JSON before the runtime kills the run).
 
 Do not try to “batch” or parallelize spawns. Wait for each `sessions_spawn` to return a `childSessionKey`, record it, then move to the next specialist. Once spawned, specialists run concurrently in the background — sequential spawning is only to avoid overloading the gateway during session creation.
 
@@ -110,11 +110,11 @@ A specialist has responded when its history contains an assistant message with a
   node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" specialist-done \
     --sec-id <SEC_ID> --specialist <name>
   ```
-- **No response yet and elapsed_secs < 95** → leave it pending (95s allows a few seconds past the specialist `runTimeoutSeconds=90`). Output `TICK_PARTIAL:<sec_id>:<done_count>/10` and yield — wait for next TICK.
-- **No response and elapsed_secs >= 95** → record as failed (exceeded specialist run budget):
+- **No response yet and elapsed_secs < 125** → leave it pending (125s allows a few seconds past the specialist `runTimeoutSeconds=120`). Output `TICK_PARTIAL:<sec_id>:<done_count>/10` and yield — wait for next TICK.
+- **No response and elapsed_secs >= 125** → record as failed (exceeded specialist run budget):
   ```bash
   node "${ADVISOR_ORCH_WORKSPACE:-/home/node/.openclaw/extensions/advisor-lead-gen}/scripts/record-enrichment.js" specialist-fail \
-    --sec-id <SEC_ID> --specialist <name> --error "timeout after 90s specialist run budget"
+    --sec-id <SEC_ID> --specialist <name> --error "timeout after 120s specialist run budget"
   ```
 
 ### Step T3 — Check if all specialists are resolved

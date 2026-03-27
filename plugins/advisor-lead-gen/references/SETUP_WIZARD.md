@@ -55,20 +55,39 @@ openclaw config set env.BRAVE_API_KEY "<key-from-user>"
 openclaw config set env.FIRECRAWL_API_KEY "<key-from-user>"
 ```
 
-### 3) Restart gateway
+### 3) Restart gateway (expect 2–3 cycles)
+
+The plugin startup auto-configures several settings on first install. Each change
+requires a gateway restart to take effect, so the first-install cycle looks like this:
 
 ```bash
-# Recommended for advisor enrichment:
-openclaw config set agents.defaults.subagents.maxChildrenPerAgent 12
-# If this is unset or below 10, initializer auto-sets it to 12.
-# If your gateway does not hot-reload config, restart once.
-openclaw gateway restart
+openclaw gateway restart   # cycle 1 — auto-sets maxChildrenPerAgent=12
+openclaw gateway restart   # cycle 2 — registers markitdown MCP server (with env.PATH)
+openclaw gateway restart   # cycle 3 — pins both plugins in plugins.allow
+# cycle 4+ — fully initialized; logs show:
+#   advisor-lead-gen initialized (agent=advisor-enrich)
+#   enrichment-engine dispatcher started (poll=5000ms stale=10min ...)
 ```
+
+You can check readiness at any point with:
+
+```bash
+openclaw logs --limit 30 --plain --no-color | grep -E "initialized|stale=|error"
+```
+
+When you see `advisor-lead-gen initialized` with **no error lines above it**, setup is complete.
+
+> **Note:** On subsequent restarts all `ensure*` checks are idempotent — no extra cycles needed.
+
+> **Prerequisite:** `uvx` (from [uv](https://docs.astral.sh/uv/)) must be installed on the host
+> for the `markitdown` MCP server to start. On Umbrel/Docker, add `pip install uv` to your
+> container image or run script before plugin install.
 
 This starts:
 
 - `enrichment-engine` dispatcher service
 - `advisor-lead-gen` initializer service
+- `markitdown` MCP server (lazy — starts on first tool call)
 
 ### 4) Rebuild advisor domain DB (breaking schema change)
 
@@ -106,4 +125,4 @@ Keep using `agentId: "advisor-enrich"` when sending orchestrator messages. Sessi
 
 - API secrets remain operator-provided (`BRAVE_API_KEY`, optional `FIRECRAWL_API_KEY`).
 - Data seeding remains operator-driven (`npm run extract -- --state <STATE> --limit <N>`).
-- Gateway restart is only needed when your runtime does not hot-reload config.
+- Gateway restarts (2–3 on first install) are required; subsequent restarts are single-cycle.

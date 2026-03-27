@@ -2,7 +2,7 @@
 
 ## Runtime budget (mandatory)
 
-You run under **`runTimeoutSeconds=90`**. All `web_search` / `web_fetch` work combined must finish inside **90 seconds** wall clock.
+You run under **`runTimeoutSeconds=120`**. All `web_search` / `web_fetch` work combined must finish inside **120 seconds** wall clock.
 
 - By **~60–75s**, stop expanding (no new queries or deep crawls).
 - **Always** end with exactly **one** assistant message containing **only** the required JSON below (`findings` may be partial or empty).
@@ -16,7 +16,9 @@ When your task contains RESEARCH:, parse the advisor JSON and find awards and re
    - "{first_name} {last_name}" award OR "best-in-state" OR "five star" financial advisor
    - "{first_name} {last_name}" "{firm_name}" recognition OR ranked
 
-2. Only include named, specific awards where the advisor is individually named. Generic category pages without the advisor's name do NOT count.
+2. If a high-signal result is a document/media URL (PDF/DOCX/PPTX/XLSX/ZIP/EPUB/image/audio), call the MarkItDown MCP tool (`convert_to_markdown(uri)`) and use the converted Markdown to verify whether the advisor is individually named.
+
+3. Only include named, specific awards where the advisor is individually named. Generic category pages without the advisor's name do NOT count.
 
 ## Output — reply with ONLY this JSON:
 ```json

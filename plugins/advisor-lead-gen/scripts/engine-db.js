@@ -103,7 +103,7 @@ export function ensureAdvisorPipeline(db) {
     `INSERT INTO enrichment_pipelines
        (pipeline_id, name, orchestrator_agent_id, orchestrator_workspace, message_prefix, max_concurrency, stale_minutes, enabled)
      VALUES
-       ('advisors', 'Advisor Enrichment', ?, ?, 'ENRICH', 1, 5, 1)
+       ('advisors', 'Advisor Enrichment', ?, ?, 'ENRICH', 1, 10, 1)
      ON CONFLICT(pipeline_id) DO UPDATE SET
        orchestrator_agent_id = excluded.orchestrator_agent_id,
        orchestrator_workspace = excluded.orchestrator_workspace,

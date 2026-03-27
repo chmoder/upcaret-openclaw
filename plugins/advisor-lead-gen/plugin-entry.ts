@@ -84,6 +84,57 @@ const entry = {
       return { applied: true as const, cfg: patched };
     }
 
+    async function ensureMarkitdownMcpServer(cfg: any) {
+      const existing = cfg?.mcp?.servers?.markitdown;
+      if (existing && typeof existing === "object") {
+        return { applied: false as const, cfg };
+      }
+      // Pass an enriched PATH so uvx is findable even when the gateway runs
+      // as a LaunchAgent (macOS) or systemd service (Linux) with a stripped PATH.
+      const extraPaths = [
+        "/usr/local/bin",
+        "/opt/homebrew/bin",
+        `${process.env.HOME ?? "~"}/.local/bin`,
+      ].join(":");
+      const patched = {
+        ...cfg,
+        mcp: {
+          ...(cfg?.mcp ?? {}),
+          servers: {
+            ...(cfg?.mcp?.servers ?? {}),
+            markitdown: {
+              command: "uvx",
+              args: ["markitdown-mcp"],
+              env: { PATH: `${extraPaths}:${process.env.PATH ?? "/usr/bin:/bin"}` },
+            },
+          },
+        },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      return { applied: true as const, cfg: patched };
+    }
+
+    async function ensurePluginsAllow(cfg: any) {
+      const REQUIRED = ["enrichment-engine", "advisor-lead-gen"];
+      const current: string[] = Array.isArray(cfg?.plugins?.allow)
+        ? cfg.plugins.allow
+        : [];
+      const missing = REQUIRED.filter((id) => !current.includes(id));
+      if (missing.length === 0) {
+        return { applied: false as const, cfg };
+      }
+      const merged = [...new Set([...current, ...REQUIRED])];
+      const patched = {
+        ...cfg,
+        plugins: {
+          ...(cfg?.plugins ?? {}),
+          allow: merged,
+        },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      return { applied: true as const, cfg: patched };
+    }
+
     async function ensureAdvisorEnrichAgentConfig(cfg: any) {
       const wanted = normalizeAgentId(ORCH_AGENT_ID);
       const list = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
@@ -181,6 +232,34 @@ const entry = {
         } catch (err: any) {
           log.warn(
             `WARN — unable to auto-apply maxChildrenPerAgent: ${String(err?.message ?? err)}`,
+          );
+        }
+        try {
+          const out = await ensureMarkitdownMcpServer(cfgForValidate);
+          cfgForValidate = out.cfg;
+          if (out.applied) {
+            log.error(
+              'Configured MCP server "markitdown" (uvx markitdown-mcp). Restart gateway to apply.',
+            );
+            return;
+          }
+        } catch (err: any) {
+          log.warn(
+            `WARN — unable to auto-configure mcp.servers.markitdown: ${String(err?.message ?? err)}`,
+          );
+        }
+        try {
+          const out = await ensurePluginsAllow(cfgForValidate);
+          cfgForValidate = out.cfg;
+          if (out.applied) {
+            log.error(
+              "Pinned enrichment-engine and advisor-lead-gen in plugins.allow. Restart gateway to apply.",
+            );
+            return;
+          }
+        } catch (err: any) {
+          log.warn(
+            `WARN — unable to auto-configure plugins.allow: ${String(err?.message ?? err)}`,
           );
         }
         const errors = validateSetup(cfgForValidate);
