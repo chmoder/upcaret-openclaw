@@ -142,7 +142,9 @@ const entry = {
             markitdown: {
               command: "uvx",
               args: ["markitdown-mcp"],
-              env: { PATH: `${extraPaths}:${process.env.PATH ?? "/usr/bin:/bin"}` },
+              env: {
+                PATH: `${extraPaths}:${process.env.PATH ?? "/usr/bin:/bin"}`,
+              },
             },
           },
         },
@@ -155,14 +157,28 @@ const entry = {
       const allowHostControl =
         cfg?.agents?.defaults?.sandbox?.browser?.allowHostControl;
       const headless = cfg?.browser?.headless;
-      if (allowHostControl === true && headless === true) {
+
+      // browser lives in group:ui, which is absent from the "coding" profile.
+      // tools.allow is an exclusive allowlist — adding "browser" there would wipe
+      // out all other tools. The correct fix is to promote the profile to "full"
+      // (no built-in tool restriction), which makes browser available globally to
+      // all agents including spawned specialists.
+      const currentProfile = cfg?.tools?.profile ?? "coding";
+      const profileIsFull = currentProfile === "full";
+
+      if (allowHostControl === true && headless === true && profileIsFull) {
         return { applied: false as const, cfg };
       }
-      const patched = {
+
+      const patched: any = {
         ...cfg,
         browser: {
           ...(cfg?.browser ?? {}),
           headless: true,
+        },
+        tools: {
+          ...(cfg?.tools ?? {}),
+          profile: "full",
         },
         agents: {
           ...(cfg?.agents ?? {}),
@@ -178,6 +194,7 @@ const entry = {
           },
         },
       };
+
       await api.runtime.config.writeConfigFile(patched);
       return { applied: true as const, cfg: patched };
     }
@@ -205,31 +222,52 @@ const entry = {
 
     async function ensureAdvisorEnrichAgentConfig(cfg: any) {
       const wanted = normalizeAgentId(ORCH_AGENT_ID);
-      const list = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
-      const exists = list.some(
+      const list: any[] = Array.isArray(cfg?.agents?.list)
+        ? cfg.agents.list
+        : [];
+      const existingIdx = list.findIndex(
         (a: any) => normalizeAgentId(String(a?.id || "")) === wanted,
       );
-      if (exists) {
-        return cfg;
+
+      // Build the desired agent entry. Do NOT set tools.allow — browser is
+      // globally available via tools.profile="full". A per-agent tools.allow
+      // would act as an exclusive allowlist and break exec/sessions_spawn/etc.
+      const desiredEntry = (base: any = {}) => {
+        const entry: any = {
+          ...base,
+          id: ORCH_AGENT_ID,
+          name: base.name ?? "Advisor Enrich",
+          workspace: base.workspace ?? ROOT,
+          model: base.model ?? cfg?.agents?.defaults?.model,
+        };
+        // Remove any stale tools.allow left by a prior plugin version.
+        delete entry.tools;
+        return entry;
+      };
+
+      let newList: any[];
+      let didChange: boolean;
+      if (existingIdx === -1) {
+        newList = [...list, desiredEntry()];
+        didChange = true;
+      } else {
+        const existing = list[existingIdx];
+        // Rewrite if workspace/name wrong, or if stale tools.allow is present.
+        const needsUpdate = existing.workspace !== ROOT || "tools" in existing;
+        if (!needsUpdate) return cfg;
+        newList = list.map((a, i) => (i === existingIdx ? desiredEntry(a) : a));
+        didChange = true;
       }
+
+      if (!didChange) return cfg;
+
       const patched = {
         ...cfg,
-        agents: {
-          ...(cfg?.agents ?? {}),
-          list: [
-            ...(Array.isArray(cfg?.agents?.list) ? cfg.agents.list : []),
-            {
-              id: ORCH_AGENT_ID,
-              name: "Advisor Enrich",
-              workspace: ROOT,
-              model: cfg?.agents?.defaults?.model,
-            },
-          ],
-        },
+        agents: { ...(cfg?.agents ?? {}), list: newList },
       };
       try {
         await api.runtime.config.writeConfigFile(patched);
-        log.info(`Configured agent "${ORCH_AGENT_ID}" workspace=${ROOT}`);
+        log.info(`Configured agent "${ORCH_AGENT_ID}" (workspace=${ROOT}).`);
       } catch (err: any) {
         log.warn(
           `WARN — unable to persist agent config: ${String(err?.message ?? err)}`,
@@ -278,10 +316,11 @@ const entry = {
 
       if (
         cfg?.agents?.defaults?.sandbox?.browser?.allowHostControl !== true ||
-        cfg?.browser?.headless !== true
+        cfg?.browser?.headless !== true ||
+        cfg?.tools?.profile !== "full"
       ) {
         errors.push(
-          "browser.headless and agents.defaults.sandbox.browser.allowHostControl must both be true. These are auto-configured on startup — if this error persists, restart the gateway once more.",
+          "browser.headless, agents.defaults.sandbox.browser.allowHostControl, and tools.profile=full must all be set. These are auto-configured on startup — if this error persists, restart the gateway once more.",
         );
       }
 
