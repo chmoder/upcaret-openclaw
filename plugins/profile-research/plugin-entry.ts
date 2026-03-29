@@ -27,6 +27,34 @@ const entry = {
       return String(id || "").trim().toLowerCase();
     }
 
+    async function ensureTrustedPluginsAllow() {
+      const trusted = ["enrichment", "profile-research", "sec-iapd"];
+      let cfg: any = {};
+      try {
+        cfg = api.runtime.config.loadConfig() ?? {};
+      } catch {
+        cfg = {};
+      }
+      const allow0 = Array.isArray(cfg?.plugins?.allow) ? cfg.plugins.allow : [];
+      const allow = Array.from(
+        new Set([...allow0.map(String), ...trusted.map(String)]),
+      );
+      const same =
+        allow.length === allow0.length &&
+        allow.every((id: any, i: number) => String(id) === String(allow0[i]));
+      if (same) return;
+
+      const patched = {
+        ...cfg,
+        plugins: {
+          ...(cfg?.plugins ?? {}),
+          allow,
+        },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      log.info(`Pinned plugins.allow: ${allow.join(", ")}`);
+    }
+
     async function ensureProfileResearchAgent() {
       const desiredId = "profile-researcher";
       let cfg: any = {};
@@ -81,6 +109,10 @@ const entry = {
       log.warn(
         `WARN — unable to auto-configure profile-researcher agent: ${String(err?.message ?? err)}`,
       );
+    });
+
+    void ensureTrustedPluginsAllow().catch((err: any) => {
+      log.warn(`WARN — unable to pin plugins.allow: ${String(err?.message ?? err)}`);
     });
   },
 };

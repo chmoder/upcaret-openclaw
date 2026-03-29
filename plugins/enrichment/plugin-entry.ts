@@ -27,6 +27,34 @@ const entry = {
       return (id || "").trim().toLowerCase();
     }
 
+    async function ensureTrustedPluginsAllow() {
+      const trusted = ["enrichment", "profile-research", "sec-iapd"];
+      let cfg: any = {};
+      try {
+        cfg = api.runtime.config.loadConfig() ?? {};
+      } catch {
+        cfg = {};
+      }
+      const allow0 = Array.isArray(cfg?.plugins?.allow) ? cfg.plugins.allow : [];
+      const allow = Array.from(
+        new Set([...allow0.map(String), ...trusted.map(String)]),
+      );
+      const same =
+        allow.length === allow0.length &&
+        allow.every((id: any, i: number) => String(id) === String(allow0[i]));
+      if (same) return;
+
+      const patched = {
+        ...cfg,
+        plugins: {
+          ...(cfg?.plugins ?? {}),
+          allow,
+        },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      log.info(`Pinned plugins.allow: ${allow.join(", ")}`);
+    }
+
     // Auto-register the enrichment orchestrator agent on startup.
     async function ensureEnrichmentOrchestratorAgent() {
       const desiredId = "profile-enrich";
@@ -69,6 +97,10 @@ const entry = {
 
     void ensureEnrichmentOrchestratorAgent().catch((err: any) => {
       log.warn(`WARN — unable to auto-configure profile-enrich agent: ${String(err?.message ?? err)}`);
+    });
+
+    void ensureTrustedPluginsAllow().catch((err: any) => {
+      log.warn(`WARN — unable to pin plugins.allow: ${String(err?.message ?? err)}`);
     });
 
     const POLL_INTERVAL_MS = Number.parseInt(
