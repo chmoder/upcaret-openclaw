@@ -1,0 +1,12 @@
+{
+  "id": "sec-iapd",
+  "name": "upCaret SEC IAPD Adapter",
+  "description": "SEC IAPD source adapter for the standalone enrichment plugin.",
+  "version": "1.0.0",
+  "skills": ["."],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

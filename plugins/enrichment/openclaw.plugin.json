@@ -1,0 +1,12 @@
+{
+  "id": "enrichment",
+  "name": "upCaret Enrichment",
+  "description": "Standalone profile enrichment platform with queue dispatcher and orchestrator.",
+  "version": "1.0.0",
+  "skills": ["."],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

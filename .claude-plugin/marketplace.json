@@ -3,21 +3,21 @@
   "version": "1.0.0",
   "plugins": [
     {
-      "name": "enrichment-engine",
-      "version": "0.1.1",
-      "description": "upCaret Enrichment Engine (proprietary)",
+      "name": "enrichment",
+      "version": "1.0.0",
+      "description": "upCaret Enrichment (proprietary)",
       "source": {
         "type": "path",
-        "path": "plugins/enrichment-engine"
+        "path": "plugins/enrichment"
       }
     },
     {
-      "name": "advisor-lead-gen",
-      "version": "3.1.1",
-      "description": "upCaret Advisor Lead Gen (proprietary)",
+      "name": "sec-iapd",
+      "version": "1.0.0",
+      "description": "upCaret SEC IAPD Adapter (proprietary)",
       "source": {
         "type": "path",
-        "path": "plugins/advisor-lead-gen"
+        "path": "plugins/sec-iapd"
       }
     }
   ]

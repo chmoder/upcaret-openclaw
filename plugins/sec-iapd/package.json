@@ -1,0 +1,35 @@
+{
+  "name": "sec-iapd",
+  "version": "1.0.0",
+  "description": "SEC IAPD adapter plugin that imports profiles into enrichment.",
+  "type": "module",
+  "main": "plugin-entry.ts",
+  "files": [
+    "openclaw.plugin.json",
+    "plugin-entry.ts",
+    "SKILL.md",
+    "README.md",
+    "scripts/db.js",
+    "scripts/import-advisors.js"
+  ],
+  "scripts": {
+    "import": "node scripts/import-advisors.js"
+  },
+  "keywords": [
+    "openclaw",
+    "sec",
+    "iapd",
+    "enrichment-adapter"
+  ],
+  "author": "OpenClaw",
+  "license": "MIT",
+  "dependencies": {},
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "openclaw": {
+    "extensions": [
+      "./plugin-entry.ts"
+    ]
+  }
+}

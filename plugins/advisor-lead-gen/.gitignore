@@ -1,8 +1,0 @@
-node_modules/
-advisors.db
-advisors.db-wal
-advisors.db-shm
-.test-enrichment.db
-.clawhub/
-*.log
-*.tgz

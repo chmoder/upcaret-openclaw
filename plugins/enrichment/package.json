@@ -1,0 +1,51 @@
+{
+  "name": "enrichment",
+  "version": "1.0.0",
+  "description": "Standalone profile enrichment plugin for OpenClaw.",
+  "type": "module",
+  "main": "plugin-entry.ts",
+  "files": [
+    "openclaw.plugin.json",
+    "plugin-entry.ts",
+    "ARCHITECTURE.md",
+    "IDENTITY.md",
+    "README.md",
+    "SKILL.md",
+    "agents/",
+    "references/",
+    "scripts/db.js",
+    "scripts/db-init.js",
+    "scripts/enqueue.js",
+    "scripts/feed.js",
+    "scripts/next-profile.js",
+    "scripts/record-enrichment.js",
+    "scripts/reset-queue.js",
+    "scripts/save-enrichment.js",
+    "scripts/status-dashboard.js",
+    "scripts/finding-types.js"
+  ],
+  "scripts": {
+    "db:init": "node scripts/db-init.js",
+    "enqueue": "node scripts/enqueue.js",
+    "feed": "node scripts/feed.js",
+    "next": "node scripts/next-profile.js",
+    "status": "node scripts/status-dashboard.js",
+    "reset:queue": "node scripts/reset-queue.js"
+  },
+  "keywords": [
+    "openclaw",
+    "enrichment",
+    "profile-enrichment"
+  ],
+  "author": "OpenClaw",
+  "license": "MIT",
+  "dependencies": {},
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "openclaw": {
+    "extensions": [
+      "./plugin-entry.ts"
+    ]
+  }
+}

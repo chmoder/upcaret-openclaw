@@ -2,68 +2,52 @@
 
 This repository holds OpenClaw **plugins** and related docs for upCaret. The current stack includes:
 
-- **`plugins/enrichment-engine`**: generic enrichment dispatcher/queue engine.
-- **`plugins/advisor-lead-gen`**: SEC IAPD advisor domain plugin and orchestrator assets.
+- **`plugins/enrichment`**: standalone person enrichment core (unified DB + dispatcher + orchestrator/specialists).
+- **`plugins/sec-iapd`**: optional SEC IAPD source adapter that imports profiles into `enrichment`.
 
 ## Layout
 
 ```text
 plugins/
-  enrichment-engine/    # generic dispatcher + enrichment.db job history
-  advisor-lead-gen/     # SEC IAPD download + orchestrated enrichment (plugin + skill)
+  enrichment/           # standalone enrichment core plugin
+  sec-iapd/             # SEC IAPD importer adapter plugin
 ```
 
 Each plugin folder is self-contained: `openclaw.plugin.json`, `plugin-entry.ts`, `SKILL.md`, `package.json`, `scripts/`, `agents/`, `references/`, etc.
 
 ## Install (OpenClaw)
 
-Installs go through OpenClaw only: the CLI pulls the plugin into **OpenClaw’s managed extensions directory** (not a path in this git repo). See **`plugins/advisor-lead-gen/references/DISTRIBUTION.md`**.
+Installs go through OpenClaw only: the CLI pulls the plugin into OpenClaw's managed extensions directory.
 
 ```bash
-openclaw plugins install enrichment-engine
-openclaw plugins install advisor-lead-gen
-openclaw plugins enable enrichment-engine
-openclaw plugins enable advisor-lead-gen
-# BRAVE_API_KEY: OpenClaw Settings → Environment variables, or:
-openclaw config set env.BRAVE_API_KEY "<key>"
-openclaw agents add advisor-enrich --workspace ~/.openclaw/extensions/advisor-lead-gen
+openclaw plugins install enrichment
+openclaw plugins enable enrichment
+openclaw plugins install sec-iapd
+openclaw plugins enable sec-iapd
 openclaw gateway restart
 ```
 
-Notes:
-
-- If `openclaw plugins install enrichment-engine` fails with “Package not found on npm”, it is not published to your current marketplace. Install it from an artifact/path instead (see `plugins/enrichment-engine/README.md` and `plugins/advisor-lead-gen/references/DISTRIBUTION.md`).
-
-Rebuild advisor domain DB for the standardized schema:
+Seed SEC profiles (optional adapter):
 
 ```bash
-rm -f ~/.openclaw/extensions/advisor-lead-gen/advisors.db
-cd ~/.openclaw/extensions/advisor-lead-gen
-npm run bootstrap
-npm run extract -- --state <STATE> --limit <N>
+cd ~/.openclaw/extensions/sec-iapd
+npm run import -- --state <STATE> --limit <N> --quiet
 ```
-
-**After you publish a new version**: update both plugins (or `--all`), then restart gateway.
-
-In chat you can still say **“set up the lead gen skill”** — the agent follows **`plugins/advisor-lead-gen/references/SETUP_WIZARD.md`**.
 
 ## Prerequisites
 
-- **Node.js** 22.5+ (required by `node:sqlite`; see each plugin’s `package.json` `engines`)
-- For enrichment: **`BRAVE_API_KEY`** in OpenClaw config / Settings (optional keys per plugin docs)
+- **Node.js** 22.5+ (required by `node:sqlite`)
+- Provider/API keys required by your enrichment runtime setup (for example web search tooling)
 
 ## Release workflow (maintainers)
 
-Every change ships as a new version: bump `package.json` and `openclaw.plugin.json`, run tests, publish to **ClawHub and/or npm** (`advisor-lead-gen`), then operators run **`openclaw plugins update`**.
+Every change ships as a new version: bump `package.json` and `openclaw.plugin.json`, run tests, publish, then operators run `openclaw plugins update`.
 
 ```bash
-cd plugins/advisor-lead-gen
+cd plugins/enrichment
 npm install   # only if you add dependencies; currently empty
-npm test
-npm run bootstrap
+npm run db:init
 ```
-
-See **`plugins/advisor-lead-gen/references/DISTRIBUTION.md`** for packaging, artifacts, and offline zip installs.
 
 ## License
 
