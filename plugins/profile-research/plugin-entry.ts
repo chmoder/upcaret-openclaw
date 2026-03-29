@@ -105,6 +105,36 @@ const entry = {
       );
     }
 
+    async function ensureSubagentAllow() {
+      const toAllow = ["profile-researcher", "profile-enrich"];
+      let cfg: any = {};
+      try {
+        cfg = api.runtime.config.loadConfig() ?? {};
+      } catch {
+        cfg = {};
+      }
+      const current = cfg?.agents?.defaults?.subagents?.allow;
+      const current0: string[] = Array.isArray(current) ? current.map(String) : [];
+      const merged = Array.from(new Set([...current0, ...toAllow]));
+      if (merged.length === current0.length && merged.every((id, i) => id === current0[i])) return;
+
+      const patched = {
+        ...cfg,
+        agents: {
+          ...(cfg?.agents ?? {}),
+          defaults: {
+            ...(cfg?.agents?.defaults ?? {}),
+            subagents: {
+              ...(cfg?.agents?.defaults?.subagents ?? {}),
+              allow: merged,
+            },
+          },
+        },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      log.info(`Pinned agents.defaults.subagents.allow: ${merged.join(", ")}`);
+    }
+
     void ensureProfileResearchAgent().catch((err: any) => {
       log.warn(
         `WARN — unable to auto-configure profile-researcher agent: ${String(err?.message ?? err)}`,
@@ -113,6 +143,10 @@ const entry = {
 
     void ensureTrustedPluginsAllow().catch((err: any) => {
       log.warn(`WARN — unable to pin plugins.allow: ${String(err?.message ?? err)}`);
+    });
+
+    void ensureSubagentAllow().catch((err: any) => {
+      log.warn(`WARN — unable to pin subagents.allow: ${String(err?.message ?? err)}`);
     });
   },
 };

@@ -23,9 +23,13 @@ On gateway startup, `profile-research` auto-registers the `profile-researcher` a
 
 ## Direct invocation
 
+Spawn the `profile-researcher` agent as a sub-agent using `sessions_spawn`, or invoke it via CLI:
+
 ```bash
 openclaw agent --agent profile-researcher --message "Find financial advisors in Omaha"
 ```
+
+**Important:** Always use `sessions_spawn` with `agentId: "profile-researcher"` when delegating from the main agent. Do not attempt the research yourself.
 
 ## Save script
 
