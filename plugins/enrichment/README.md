@@ -22,6 +22,8 @@ openclaw plugins enable enrichment
 openclaw gateway restart
 ```
 
+On gateway start the plugin adds `profile-enrich` plus namespaced specialist agent entries (`enrich-profile`, `enrich-email`, `enrich-phone`, `enrich-website`, `enrich-linkedin`, `enrich-cert`, `enrich-award`, `enrich-speaking`, `enrich-news`, `enrich-network`, `enrich-scorer`) to `openclaw.json` if missing, and sets `profile-enrich.subagents.allowAgents` to those IDs so `sessions_spawn` can resolve and run them.
+
 If running locally from this repo:
 
 ```bash

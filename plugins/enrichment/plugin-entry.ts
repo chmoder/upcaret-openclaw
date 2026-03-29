@@ -46,7 +46,9 @@ const entry = {
         );
         return;
       }
-      const allow0 = Array.isArray(cfg?.plugins?.allow) ? cfg.plugins.allow : [];
+      const allow0 = Array.isArray(cfg?.plugins?.allow)
+        ? cfg.plugins.allow
+        : [];
       const allow = Array.from(
         new Set([...allow0.map(String), ...trusted.map(String)]),
       );
@@ -66,9 +68,24 @@ const entry = {
       log.info(`Pinned plugins.allow: ${allow.join(", ")}`);
     }
 
-    // Auto-register the enrichment orchestrator agent on startup.
-    async function ensureEnrichmentOrchestratorAgent() {
-      const desiredId = "profile-enrich";
+    const ENRICHMENT_ORCH_AGENT_ID = "profile-enrich";
+    // IDs must match `IDENTITY.md` sessions_spawn targets.
+    const ENRICHMENT_CHILD_AGENT_SPECS = [
+      { id: "enrich-profile", label: "profile" },
+      { id: "enrich-email", label: "email" },
+      { id: "enrich-phone", label: "phone" },
+      { id: "enrich-website", label: "website" },
+      { id: "enrich-linkedin", label: "linkedin" },
+      { id: "enrich-cert", label: "cert" },
+      { id: "enrich-award", label: "award" },
+      { id: "enrich-speaking", label: "speaking" },
+      { id: "enrich-news", label: "news" },
+      { id: "enrich-network", label: "network" },
+      { id: "enrich-scorer", label: "scorer" },
+    ] as const;
+    const ENRICHMENT_CHILD_AGENT_IDS = ENRICHMENT_CHILD_AGENT_SPECS.map((s) => s.id);
+
+    async function ensureEnrichmentAgents() {
       const cfg: any = readFullConfig();
       if (!cfg?.gateway?.mode) {
         log.warn(
@@ -76,43 +93,86 @@ const entry = {
         );
         return;
       }
-      const list: any[] = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
-      const idx = list.findIndex(
-        (a: any) => normalizeAgentId(String(a?.id || "")) === desiredId,
-      );
-      const desiredEntry = (base: any = {}) => {
-        const entry: any = {
-          ...base,
-          id: desiredId,
-          name: base.name ?? "Profile Enrich",
-          workspace: ROOT,
-          model: base.model ?? cfg?.agents?.defaults?.model,
+      const list: any[] = Array.isArray(cfg?.agents?.list)
+        ? cfg.agents.list
+        : [];
+      const newList = [...list];
+      let changed = false;
+
+      const upsertAgent = (desiredId: string, defaultName: string) => {
+        const wanted = normalizeAgentId(desiredId);
+        const idx = newList.findIndex(
+          (a: any) => normalizeAgentId(String(a?.id || "")) === wanted,
+        );
+        const desiredEntry = (base: any = {}) => {
+          const entry: any = {
+            ...base,
+            id: desiredId,
+            name: base.name ?? defaultName,
+            workspace: ROOT,
+            model: base.model ?? cfg?.agents?.defaults?.model,
+          };
+          delete entry.tools;
+          return entry;
         };
-        delete entry.tools;
-        return entry;
+        if (idx >= 0) {
+          const existing = newList[idx] ?? {};
+          const merged = desiredEntry(existing);
+          const allow0 = Array.isArray(existing?.subagents?.allowAgents)
+            ? existing.subagents.allowAgents.map(String)
+            : [];
+          const allowAgents = Array.from(
+            new Set([...allow0, ...ENRICHMENT_CHILD_AGENT_IDS]),
+          );
+          if (desiredId === ENRICHMENT_ORCH_AGENT_ID) {
+            merged.subagents = {
+              ...(existing?.subagents ?? {}),
+              allowAgents,
+            };
+          }
+          if (
+            JSON.stringify(existing) !== JSON.stringify(merged) ||
+            (desiredId === ENRICHMENT_ORCH_AGENT_ID && allow0.length !== allowAgents.length)
+          ) {
+            newList[idx] = merged;
+            changed = true;
+          }
+          return;
+        }
+
+        const created = desiredEntry();
+        if (desiredId === ENRICHMENT_ORCH_AGENT_ID) {
+          created.subagents = {
+            allowAgents: [...ENRICHMENT_CHILD_AGENT_IDS],
+          };
+        }
+        newList.push(created);
+        changed = true;
       };
-      if (idx >= 0) {
-        const existing = list[idx] ?? {};
-        if (existing.workspace === ROOT && !("tools" in existing)) return;
+
+      upsertAgent(ENRICHMENT_ORCH_AGENT_ID, "Profile Enrich");
+      for (const spec of ENRICHMENT_CHILD_AGENT_SPECS) {
+        upsertAgent(spec.id, `Enrichment: ${spec.label}`);
       }
-      const patchedList =
-        idx === -1
-          ? [...list, desiredEntry()]
-          : list.map((a: any, i: number) => (i === idx ? desiredEntry(a) : a));
+
+      if (!changed) return;
       const patched = {
         ...cfg,
-        agents: { ...(cfg?.agents ?? {}), list: patchedList },
+        agents: { ...(cfg?.agents ?? {}), list: newList },
       };
       await api.runtime.config.writeConfigFile(patched);
-      log.info(`Configured enrichment orchestrator agent "${desiredId}" (workspace=${ROOT})`);
+      log.info(
+        `Configured enrichment agents (orchestrator + ${ENRICHMENT_CHILD_AGENT_IDS.length} child agents) workspace=${ROOT}`,
+      );
     }
 
-    void ensureEnrichmentOrchestratorAgent().catch((err: any) => {
-      log.warn(`WARN — unable to auto-configure profile-enrich agent: ${String(err?.message ?? err)}`);
-    });
-
-    void ensureTrustedPluginsAllow().catch((err: any) => {
-      log.warn(`WARN — unable to pin plugins.allow: ${String(err?.message ?? err)}`);
+    void (async () => {
+      await ensureTrustedPluginsAllow();
+      await ensureEnrichmentAgents();
+    })().catch((err: any) => {
+      log.warn(
+        `WARN — unable to auto-configure enrichment startup config: ${String(err?.message ?? err)}`,
+      );
     });
 
     const POLL_INTERVAL_MS = Number.parseInt(
@@ -138,7 +198,9 @@ const entry = {
     async function openEnrichmentDb() {
       const dir = join(enrichmentDbPath, "..");
       fs.mkdirSync(dir, { recursive: true });
-      const { openDb } = await import(pathToFileURL(join(ROOT, "scripts/db.js")).href);
+      const { openDb } = await import(
+        pathToFileURL(join(ROOT, "scripts/db.js")).href
+      );
       const { initSchema } = await import(
         pathToFileURL(join(ROOT, "scripts/db-init.js")).href
       );
@@ -264,7 +326,11 @@ const entry = {
       return { applied: true as const, cfg: patched };
     }
 
-    async function ensureAgentConfig(cfg: any, agentId: string, workspacePath: string) {
+    async function ensureAgentConfig(
+      cfg: any,
+      agentId: string,
+      workspacePath: string,
+    ) {
       if (!cfg?.gateway?.mode) {
         log.warn(
           "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
@@ -273,7 +339,9 @@ const entry = {
       }
       const wanted = normalizeAgentId(agentId);
       if (!wanted) return cfg;
-      const list: any[] = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
+      const list: any[] = Array.isArray(cfg?.agents?.list)
+        ? cfg.agents.list
+        : [];
 
       const existingIdx = list.findIndex(
         (a: any) => normalizeAgentId(String(a?.id || "")) === wanted,
@@ -418,10 +486,20 @@ const entry = {
       return `openclaw agent failed (job=${jobId}): ${detail}`;
     }
 
-    function reconcilePendingSpecialistsFromSessions(db: any, jobId: string, agentId: string): number {
+    function reconcilePendingSpecialistsFromSessions(
+      db: any,
+      jobId: string,
+      agentId: string,
+    ): number {
       const aid = String(agentId || "").trim();
       if (!aid) return 0;
-      const sessionsJsonPath = join(stateDir, "agents", aid, "sessions", "sessions.json");
+      const sessionsJsonPath = join(
+        stateDir,
+        "agents",
+        aid,
+        "sessions",
+        "sessions.json",
+      );
       if (!existsSync(sessionsJsonPath)) return 0;
       let map: Record<string, any>;
       try {
@@ -463,13 +541,26 @@ const entry = {
       jobId: string;
       profileId: string;
     }) {
-      const turnSecRaw = Number.parseInt(process.env.ENRICH_TURN_TIMEOUT_SEC || "", 10);
-      const turnSec = Number.isFinite(turnSecRaw) && turnSecRaw >= 60 ? turnSecRaw : 300;
-      const maxTicksRaw = Number.parseInt(process.env.ENRICH_MAX_TICKS || "", 10);
-      const maxTicks = Number.isFinite(maxTicksRaw) && maxTicksRaw > 0 ? maxTicksRaw : 40;
-      const pauseMsRaw = Number.parseInt(process.env.ENRICH_TICK_PAUSE_MS || "", 10);
-      const pauseMs = Number.isFinite(pauseMsRaw) && pauseMsRaw >= 0 ? pauseMsRaw : 4_000;
-      const enrichPrefix = String(params.messagePrefix || "ENRICH").trim() || "ENRICH";
+      const turnSecRaw = Number.parseInt(
+        process.env.ENRICH_TURN_TIMEOUT_SEC || "",
+        10,
+      );
+      const turnSec =
+        Number.isFinite(turnSecRaw) && turnSecRaw >= 60 ? turnSecRaw : 300;
+      const maxTicksRaw = Number.parseInt(
+        process.env.ENRICH_MAX_TICKS || "",
+        10,
+      );
+      const maxTicks =
+        Number.isFinite(maxTicksRaw) && maxTicksRaw > 0 ? maxTicksRaw : 40;
+      const pauseMsRaw = Number.parseInt(
+        process.env.ENRICH_TICK_PAUSE_MS || "",
+        10,
+      );
+      const pauseMs =
+        Number.isFinite(pauseMsRaw) && pauseMsRaw >= 0 ? pauseMsRaw : 4_000;
+      const enrichPrefix =
+        String(params.messagePrefix || "ENRICH").trim() || "ENRICH";
       const payload = String(params.payloadJson || "");
       const env = agentRunEnv(params);
 
@@ -502,7 +593,11 @@ const entry = {
                 error: `enrich stopped: job ${params.jobId} not running (status=${row?.status ?? "missing"})`,
               };
             }
-            reconcilePendingSpecialistsFromSessions(db0, params.jobId, params.agentId);
+            reconcilePendingSpecialistsFromSessions(
+              db0,
+              params.jobId,
+              params.agentId,
+            );
           } finally {
             if (db0) {
               try {
@@ -528,16 +623,25 @@ const entry = {
           if (phase === "enrich") enrichStdout += String(r?.stdout ?? "");
           else completeStdout += String(r?.stdout ?? "");
 
-          if (enrichStdout.includes("DONE:") || completeStdout.includes("DONE:")) {
+          if (
+            enrichStdout.includes("DONE:") ||
+            completeStdout.includes("DONE:")
+          ) {
             return { ok: true as const };
           }
 
-          if (phase === "enrich" && enrichStdout.includes("ALL_SPECIALISTS_DONE:")) {
+          if (
+            phase === "enrich" &&
+            enrichStdout.includes("ALL_SPECIALISTS_DONE:")
+          ) {
             await resetSessionBestEffort(params.agentId);
             await new Promise((res) => setTimeout(res, 2_000));
             phase = "complete";
             completeStdout = "";
-          } else if (phase === "complete" && completeStdout.includes("SCORE_SPAWNED:")) {
+          } else if (
+            phase === "complete" &&
+            completeStdout.includes("SCORE_SPAWNED:")
+          ) {
             phase = "complete_tick";
           }
 
@@ -669,7 +773,9 @@ const entry = {
           const db = await openEnrichmentDb();
           try {
             const orphaned = db
-              .prepare(`SELECT job_id FROM enrichment_jobs WHERE status='running'`)
+              .prepare(
+                `SELECT job_id FROM enrichment_jobs WHERE status='running'`,
+              )
               .all();
             for (const row of orphaned) {
               await markFailed(db, String(row.job_id), "gateway restarted");
@@ -683,17 +789,23 @@ const entry = {
         }
 
         try {
-          await api.runtime.system.runCommandWithTimeout(["openclaw", "--version"], {
-            timeoutMs: 2_000,
-            env: {
-              ...process.env,
-              OPENCLAW_STATE_DIR: stateDir,
-              OPENCLAW_CONFIG_PATH:
-                process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json"),
+          await api.runtime.system.runCommandWithTimeout(
+            ["openclaw", "--version"],
+            {
+              timeoutMs: 2_000,
+              env: {
+                ...process.env,
+                OPENCLAW_STATE_DIR: stateDir,
+                OPENCLAW_CONFIG_PATH:
+                  process.env.OPENCLAW_CONFIG_PATH ||
+                  join(stateDir, "openclaw.json"),
+              },
             },
-          });
+          );
         } catch (err: any) {
-          log.error(`OpenClaw CLI is not available for dispatch: ${String(err?.message ?? err)}`);
+          log.error(
+            `OpenClaw CLI is not available for dispatch: ${String(err?.message ?? err)}`,
+          );
           return;
         }
 
@@ -710,7 +822,9 @@ const entry = {
               const state = await getQueueState(db);
 
               if (state.state === "running") {
-                const runningAgentId = String(state.row.orchestrator_agent_id || "").trim();
+                const runningAgentId = String(
+                  state.row.orchestrator_agent_id || "",
+                ).trim();
                 if (runningAgentId) {
                   reconcilePendingSpecialistsFromSessions(
                     db,
@@ -739,10 +853,16 @@ const entry = {
                 const row = state.row;
                 const jobId = String(row.job_id);
                 const agentId = String(
-                  row.orchestrator_agent_id || process.env.ENRICH_ORCH_AGENT_ID || "profile-enrich",
+                  row.orchestrator_agent_id ||
+                    process.env.ENRICH_ORCH_AGENT_ID ||
+                    "profile-enrich",
                 ).trim();
                 if (!agentId) {
-                  await failQueuedOrRunning(db, jobId, "missing orchestrator_agent_id");
+                  await failQueuedOrRunning(
+                    db,
+                    jobId,
+                    "missing orchestrator_agent_id",
+                  );
                   return;
                 }
 
@@ -778,7 +898,9 @@ const entry = {
                   );
                 }
                 const configuredWorkspace = String(
-                  row.orchestrator_workspace || process.env.ENRICHMENT_WORKSPACE || ROOT,
+                  row.orchestrator_workspace ||
+                    process.env.ENRICHMENT_WORKSPACE ||
+                    ROOT,
                 ).trim();
                 await ensureAgentConfig(cfg0, agentId, configuredWorkspace);
 
@@ -805,7 +927,11 @@ const entry = {
                     if (result.ok) return;
                     const db2 = await openEnrichmentDb();
                     try {
-                      await markFailed(db2, jobId, String(result.error).slice(0, 1000));
+                      await markFailed(
+                        db2,
+                        jobId,
+                        String(result.error).slice(0, 1000),
+                      );
                     } finally {
                       db2.close();
                     }

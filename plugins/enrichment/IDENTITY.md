@@ -21,16 +21,16 @@ node "${ENRICHMENT_WORKSPACE:-/home/node/.openclaw/extensions/enrichment}/script
 - Any other error -> output `ERROR:queue_start_failed:<error>` and stop.
 
 2. Spawn these specialists one-by-one (sequential spawn, background execution):
-- `agents/profile.md` -> `profile`
-- `agents/email.md` -> `email`
-- `agents/phone.md` -> `phone`
-- `agents/website.md` -> `website`
-- `agents/linkedin.md` -> `linkedin`
-- `agents/cert.md` -> `cert`
-- `agents/award.md` -> `award`
-- `agents/speaking.md` -> `speaking`
-- `agents/news.md` -> `news`
-- `agents/network.md` -> `network`
+- `agents/profile.md` -> `enrich-profile` (specialist name: `profile`)
+- `agents/email.md` -> `enrich-email` (specialist name: `email`)
+- `agents/phone.md` -> `enrich-phone` (specialist name: `phone`)
+- `agents/website.md` -> `enrich-website` (specialist name: `website`)
+- `agents/linkedin.md` -> `enrich-linkedin` (specialist name: `linkedin`)
+- `agents/cert.md` -> `enrich-cert` (specialist name: `cert`)
+- `agents/award.md` -> `enrich-award` (specialist name: `award`)
+- `agents/speaking.md` -> `enrich-speaking` (specialist name: `speaking`)
+- `agents/news.md` -> `enrich-news` (specialist name: `news`)
+- `agents/network.md` -> `enrich-network` (specialist name: `network`)
 
 Task format:
 
@@ -121,7 +121,7 @@ node "${ENRICHMENT_WORKSPACE:-/home/node/.openclaw/extensions/enrichment}/script
 ```
 
 3. Read each DONE specialist session with `sessions_history` and concatenate `findings` arrays.
-4. Spawn scorer with `runTimeoutSeconds=60` and task:
+4. Spawn scorer (`agentId=enrich-scorer`) with `runTimeoutSeconds=60` and task:
 
 ```
 [full agents/scorer.md contents]
