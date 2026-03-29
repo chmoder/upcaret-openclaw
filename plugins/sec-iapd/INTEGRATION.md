@@ -6,7 +6,7 @@
 ## Architecture
 
 1. **import-advisors.js** fetches advisor data from SEC IAPD.
-2. **sec-iapd** upserts records into enrichment-backed table (`profiles` only).
+2. **sec-iapd** delegates profile persistence to enrichment's public save CLI (`enrichment/scripts/save-profiles.js`) and writes `profiles` only.
 3. **enrichment** is invoked from chat when processing should run.
 
 ## Workflow
@@ -26,6 +26,8 @@ node scripts/import-advisors.js --state NE --limit 100
 SEC IAPD API
     ->
 sec-iapd import script
+    ->
+enrichment save-profiles.js (public entrypoint)
     ->
 enrichment DB (profiles)
     ->

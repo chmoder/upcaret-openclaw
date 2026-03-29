@@ -8,7 +8,7 @@ description: >
 # Profile Research Skill
 
 This plugin discovers and collects profile data from the web, then saves it into
-the enrichment database (`profiles` only).
+the enrichment database (`profiles` only) via enrichment's public save CLI.
 
 Dependency: `enrichment` plugin must be installed and enabled first.
 On gateway startup, `profile-research` auto-registers the `profile-researcher` agent.
@@ -42,6 +42,7 @@ Discovered profiles flow **only into enrichment**:
    node scripts/save-profiles.js --file <payload.json>
    ```
    Newly inserted profiles are marked pending (`enriched_at = NULL`, `enrichment_status = 'pending'`). Updates preserve existing enrichment state.
+   Identity is keyed on `source_system + source_key` and persisted by enrichment-owned policy.
    This adapter does not write to the enrichment `findings` table.
 
 2. **Invoke enrichment from chat** when you want processing to run.

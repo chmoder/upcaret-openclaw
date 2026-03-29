@@ -2,7 +2,10 @@
 
 import https from "node:https";
 import fs from "node:fs";
-import { randomUUID } from "node:crypto";
+import { spawnSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { openDb, resolveEnrichmentDbPath } from "./db.js";
 
 const args = process.argv.slice(2);
@@ -98,6 +101,9 @@ function parseAdvisor(doc) {
 
   return {
     sec_id: Number.parseInt(source.ind_source_id, 10),
+    source_system: "sec_iapd",
+    source_key: String(source.ind_source_id || ""),
+    source_updated_at: source.ind_industry_cal_date_iapd || null,
     first_name: firstName,
     middle_name: source.ind_middlename || "",
     last_name: lastName,
@@ -122,96 +128,35 @@ function parseAdvisor(doc) {
   };
 }
 
-function ensureProfilesSchema(db) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS profiles (
-      profile_id TEXT PRIMARY KEY,
-      first_name TEXT NOT NULL,
-      last_name TEXT NOT NULL,
-      middle_name TEXT,
-      display_name TEXT,
-      location_city TEXT,
-      location_state TEXT,
-      location_country TEXT DEFAULT 'US',
-      current_employer TEXT,
-      current_title TEXT,
-      industry TEXT,
-      source_system TEXT,
-      source_key TEXT,
-      source_data TEXT,
-      enriched_at DATETIME,
-      enrichment_score INTEGER DEFAULT 0,
-      enrichment_score_reason TEXT,
-      enrichment_status TEXT DEFAULT 'pending',
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    CREATE UNIQUE INDEX IF NOT EXISTS uq_profiles_source_key
-      ON profiles(source_system, source_key);
-  `);
-}
-
-function upsertProfile(db, advisor) {
-  const sourceSystem = "sec_iapd";
-  const sourceKey = String(advisor.sec_id);
-  const existingBySource = db
-    .prepare(
-      `SELECT profile_id
-       FROM profiles
-       WHERE source_system = ? AND source_key = ?
-       LIMIT 1`,
-    )
-    .get(sourceSystem, sourceKey);
-  const profileId = existingBySource?.profile_id || randomUUID();
-
-  db.prepare(
-    `INSERT INTO profiles (
-      profile_id, first_name, last_name, middle_name, display_name,
-      location_city, location_state, location_country,
-      current_employer, current_title,
-      source_system, source_key, source_data, updated_at
-    ) VALUES (
-      ?, ?, ?, ?, ?,
-      ?, ?, 'US',
-      ?, ?,
-      ?, ?, ?, datetime('now')
-    )
-    ON CONFLICT(profile_id) DO UPDATE SET
-      first_name = excluded.first_name,
-      last_name = excluded.last_name,
-      middle_name = excluded.middle_name,
-      display_name = excluded.display_name,
-      location_city = excluded.location_city,
-      location_state = excluded.location_state,
-      current_employer = excluded.current_employer,
-      current_title = excluded.current_title,
-      source_system = excluded.source_system,
-      source_key = excluded.source_key,
-      source_data = excluded.source_data,
-      updated_at = datetime('now')`,
-  ).run(
-    profileId,
-    advisor.first_name,
-    advisor.last_name,
-    advisor.middle_name,
-    advisor.display_name,
-    advisor.location_city,
-    advisor.location_state,
-    advisor.current_employer,
-    advisor.current_title,
-    sourceSystem,
-    sourceKey,
-    JSON.stringify(advisor.source_data),
+function resolveEnrichmentSaveCliPath() {
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const candidates = [
+    process.env.ENRICHMENT_WORKSPACE
+      ? path.join(process.env.ENRICHMENT_WORKSPACE, "scripts", "save-profiles.js")
+      : null,
+    path.join(__dirname, "..", "..", "enrichment", "scripts", "save-profiles.js"),
+    path.join(
+      process.env.OPENCLAW_HOME || path.join(os.homedir(), ".openclaw"),
+      "extensions",
+      "enrichment",
+      "scripts",
+      "save-profiles.js",
+    ),
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  throw new Error(
+    "Could not find enrichment save-profiles CLI. Set ENRICHMENT_WORKSPACE or install enrichment extension.",
   );
-
-  return existingBySource ? "updated" : "inserted";
 }
 
 (async () => {
+  const saveCliPath = resolveEnrichmentSaveCliPath();
+
   const dbPath = resolveEnrichmentDbPath();
-  const db = openDb(dbPath);
   try {
-    ensureProfilesSchema(db);
     logLine(`SEC IAPD import -> ${dbPath}`);
     logLine(`State=${state} Start=${start} Limit=${limit}`);
 
@@ -237,8 +182,7 @@ function upsertProfile(db, advisor) {
       pageStart += pageDocs.length;
     }
 
-    let inserted = 0;
-    let updated = 0;
+    const advisors = [];
     let skipped = 0;
 
     for (const doc of docs) {
@@ -247,17 +191,42 @@ function upsertProfile(db, advisor) {
         skipped++;
         continue;
       }
-      const action = upsertProfile(db, advisor);
-      if (action === "inserted") {
-        inserted++;
-        logLine(`NEW:${advisor.sec_id}:${advisor.display_name}`);
-      } else {
-        updated++;
-        logLine(`UPDATED:${advisor.sec_id}:${advisor.display_name}`);
-      }
+      advisors.push(advisor);
+      logLine(`UPSERT:${advisor.sec_id}:${advisor.display_name}`);
     }
 
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sec-iapd-save-"));
+    const payloadPath = path.join(tempDir, "payload.json");
+    fs.writeFileSync(payloadPath, JSON.stringify({ profiles: advisors }), "utf8");
+    const writeRun = spawnSync(process.execPath, [saveCliPath, "--file", payloadPath], {
+      env: {
+        ...process.env,
+        ENRICHMENT_DB_PATH: dbPath,
+        PROFILE_DATA_DEFAULT_SOURCE_SYSTEM: "sec_iapd",
+      },
+      encoding: "utf8",
+    });
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    if (writeRun.error) throw writeRun.error;
+    if (writeRun.status !== 0) {
+      throw new Error(
+        String(writeRun.stderr || writeRun.stdout || "save-profiles failed").trim(),
+      );
+    }
+    const savedLine = String(writeRun.stdout || "")
+      .split(/\r?\n/)
+      .find((line) => line.startsWith("SAVED:"));
+    if (!savedLine) {
+      throw new Error(`Unexpected save-profiles output: ${String(writeRun.stdout || "").trim()}`);
+    }
+    const writeResult = JSON.parse(savedLine.slice("SAVED:".length));
+    const inserted = Number(writeResult?.inserted || 0);
+    const updated = Number(writeResult?.updated || 0);
+    const writeSkipped = Number(writeResult?.skipped || 0);
+    skipped += writeSkipped;
+
     if (output) {
+      const db = openDb(dbPath);
       const rows = db
         .prepare(
           `SELECT profile_id, first_name, last_name, current_employer, location_city, location_state,
@@ -269,6 +238,7 @@ function upsertProfile(db, advisor) {
         )
         .all(limit);
       fs.writeFileSync(output, JSON.stringify(rows, null, 2));
+      db.close();
     }
 
     const summary = {
@@ -296,7 +266,5 @@ function upsertProfile(db, advisor) {
       }),
     );
     process.exit(1);
-  } finally {
-    db.close();
   }
 })();

@@ -6,7 +6,7 @@
 ## Architecture
 
 1. **profile-researcher** agent discovers profiles via web search.
-2. **save-profiles.js** persists records into enrichment DB table (`profiles` only).
+2. **save-profiles.js** delegates persistence to enrichment's public save CLI (`enrichment/scripts/save-profiles.js`) and writes `profiles` only.
 3. **enrichment** is invoked from chat when the user wants enrichment processing to run.
 
 ## Workflow
@@ -27,7 +27,9 @@ node scripts/save-profiles.js '<json payload>'
 ```
 profile-researcher / sec-iapd
     ->
-save-profiles.js / import scripts
+save-profiles.js (adapter)
+    ->
+enrichment save-profiles.js (public entrypoint)
     ->
 enrichment DB (profiles only)
     ->

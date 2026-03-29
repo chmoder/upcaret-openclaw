@@ -32,7 +32,7 @@ Summary is emitted as JSON on stdout for monitoring and automation.
 
 ## Integration model
 
-- `sec-iapd` imports advisor profiles and saves them into enrichment `profiles` only.
+- `sec-iapd` imports advisor profiles and delegates persistence to enrichment's public save CLI (`enrichment/scripts/save-profiles.js`) for writes into `profiles` only.
 - `enrichment` is the only plugin that runs enrichment processing.
 - Trigger enrichment from chat when you are ready to process imported records.
 - `sec-iapd` does not write to enrichment `findings`.
