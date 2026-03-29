@@ -29,3 +29,12 @@ npm run import -- --state NE --limit 100 --quiet
 ```
 
 Summary is emitted as JSON on stdout for monitoring and automation.
+
+## Integration model
+
+- `sec-iapd` imports advisor profiles and saves them into enrichment `profiles` only.
+- `enrichment` is the only plugin that runs enrichment processing.
+- Trigger enrichment from chat when you are ready to process imported records.
+- `sec-iapd` does not write to enrichment `findings`.
+
+This keeps source ingestion and enrichment orchestration clearly separated.

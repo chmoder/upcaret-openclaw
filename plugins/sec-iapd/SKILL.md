@@ -7,7 +7,7 @@ description: >
 
 # SEC IAPD Import Skill
 
-This adapter imports SEC IAPD advisors into the enrichment plugin's `profiles` table.
+This adapter imports SEC IAPD advisors into the enrichment plugin's `profiles` table only.
 
 Dependency: `enrichment` plugin must be installed and enabled first.
 
@@ -28,5 +28,13 @@ The script prints a JSON summary line with counts and `exit_code`.
 ## Typical chain
 
 1. Import from SEC (`import-advisors.js`)
-2. Enqueue enrichment (`enrichment/scripts/feed.js` or `enrichment/scripts/enqueue.js`)
+2. Invoke enrichment from chat when processing should run
 3. Watch status (`enrichment/scripts/status-dashboard.js`)
+
+## Responsibility split
+
+- `sec-iapd`: source retrieval and persistence into enrichment DB tables
+- `enrichment`: enrichment execution, orchestration, and downstream processing
+
+Keep enrichment execution in the enrichment layer so source adapters stay focused on collection quality and data integrity.
+`sec-iapd` does not write to enrichment `findings`.

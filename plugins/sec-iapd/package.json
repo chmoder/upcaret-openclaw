@@ -8,6 +8,7 @@
     "openclaw.plugin.json",
     "plugin-entry.ts",
     "SKILL.md",
+    "INTEGRATION.md",
     "README.md",
     "scripts/db.js",
     "scripts/import-advisors.js"
