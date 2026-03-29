@@ -1,0 +1,35 @@
+{
+  "name": "profile-research",
+  "version": "1.0.0",
+  "description": "General-purpose profile research plugin for OpenClaw.",
+  "type": "module",
+  "main": "plugin-entry.ts",
+  "files": [
+    "openclaw.plugin.json",
+    "plugin-entry.ts",
+    "SKILL.md",
+    "README.md",
+    "agents/researcher.md",
+    "scripts/db.js",
+    "scripts/save-profiles.js"
+  ],
+  "scripts": {
+    "save": "node scripts/save-profiles.js"
+  },
+  "keywords": [
+    "openclaw",
+    "profile-research",
+    "enrichment-adapter"
+  ],
+  "author": "OpenClaw",
+  "license": "MIT",
+  "dependencies": {},
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "openclaw": {
+    "extensions": [
+      "./plugin-entry.ts"
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "id": "profile-research",
+  "name": "upCaret Profile Research",
+  "description": "General-purpose web research agent for discovering and collecting profiles and finding-type information.",
+  "version": "1.0.0",
+  "skills": ["."],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
