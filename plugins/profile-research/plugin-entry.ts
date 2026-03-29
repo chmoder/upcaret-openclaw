@@ -1,8 +1,7 @@
-import { existsSync } from "node:fs";
+// @ts-nocheck
+import fs, { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-
-// @ts-nocheck
 let definePluginEntry: undefined | ((entry: any) => any);
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -23,17 +22,28 @@ const entry = {
       : installedRoot;
     const log = api.logger;
 
+    function readFullConfig() {
+      const configPath =
+        process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json");
+      try {
+        return JSON.parse(fs.readFileSync(configPath, "utf8") || "{}");
+      } catch {
+        return {};
+      }
+    }
+
     function normalizeAgentId(id: string) {
       return String(id || "").trim().toLowerCase();
     }
 
     async function ensureTrustedPluginsAllow() {
       const trusted = ["enrichment", "profile-research", "sec-iapd"];
-      let cfg: any = {};
-      try {
-        cfg = api.runtime.config.loadConfig() ?? {};
-      } catch {
-        cfg = {};
+      const cfg: any = readFullConfig();
+      if (!cfg?.gateway?.mode) {
+        log.warn(
+          "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
+        );
+        return;
       }
       const allow0 = Array.isArray(cfg?.plugins?.allow) ? cfg.plugins.allow : [];
       const allow = Array.from(
@@ -57,11 +67,12 @@ const entry = {
 
     async function ensureProfileResearchAgent() {
       const desiredId = "profile-researcher";
-      let cfg: any = {};
-      try {
-        cfg = api.runtime.config.loadConfig() ?? {};
-      } catch {
-        cfg = {};
+      const cfg: any = readFullConfig();
+      if (!cfg?.gateway?.mode) {
+        log.warn(
+          "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
+        );
+        return;
       }
 
       const list: any[] = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
@@ -77,7 +88,6 @@ const entry = {
           workspace: workspacePath,
           model: base.model ?? cfg?.agents?.defaults?.model,
         };
-        // Avoid per-agent allowlists that could block required tools.
         delete entry.tools;
         return entry;
       };

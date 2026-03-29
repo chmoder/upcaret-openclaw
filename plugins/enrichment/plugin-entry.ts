@@ -27,13 +27,24 @@ const entry = {
       return (id || "").trim().toLowerCase();
     }
 
+    function readFullConfig() {
+      const configPath =
+        process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json");
+      try {
+        return JSON.parse(fs.readFileSync(configPath, "utf8") || "{}");
+      } catch {
+        return {};
+      }
+    }
+
     async function ensureTrustedPluginsAllow() {
       const trusted = ["enrichment", "profile-research", "sec-iapd"];
-      let cfg: any = {};
-      try {
-        cfg = api.runtime.config.loadConfig() ?? {};
-      } catch {
-        cfg = {};
+      const cfg: any = readFullConfig();
+      if (!cfg?.gateway?.mode) {
+        log.warn(
+          "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
+        );
+        return;
       }
       const allow0 = Array.isArray(cfg?.plugins?.allow) ? cfg.plugins.allow : [];
       const allow = Array.from(
@@ -58,11 +69,12 @@ const entry = {
     // Auto-register the enrichment orchestrator agent on startup.
     async function ensureEnrichmentOrchestratorAgent() {
       const desiredId = "profile-enrich";
-      let cfg: any = {};
-      try {
-        cfg = api.runtime.config.loadConfig() ?? {};
-      } catch {
-        cfg = {};
+      const cfg: any = readFullConfig();
+      if (!cfg?.gateway?.mode) {
+        log.warn(
+          "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
+        );
+        return;
       }
       const list: any[] = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
       const idx = list.findIndex(
@@ -223,6 +235,12 @@ const entry = {
     }
 
     async function ensureSubagentChildrenLimit(cfg: any) {
+      if (!cfg?.gateway?.mode) {
+        log.warn(
+          "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
+        );
+        return { applied: false as const, cfg };
+      }
       const current = Number(
         cfg?.agents?.defaults?.subagents?.maxChildrenPerAgent ?? 5,
       );
@@ -247,6 +265,12 @@ const entry = {
     }
 
     async function ensureAgentConfig(cfg: any, agentId: string, workspacePath: string) {
+      if (!cfg?.gateway?.mode) {
+        log.warn(
+          "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
+        );
+        return cfg;
+      }
       const wanted = normalizeAgentId(agentId);
       if (!wanted) return cfg;
       const list: any[] = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
@@ -263,8 +287,6 @@ const entry = {
           workspace: workspacePath,
           model: base.model ?? cfg?.agents?.defaults?.model,
         };
-        // Avoid (or remove) per-agent tools allowlists; they are exclusive and can
-        // break required tools (and do not reliably enable the built-in browser).
         delete entry.tools;
         return entry;
       };
@@ -292,16 +314,18 @@ const entry = {
     }
 
     async function ensureBrowserConfig(cfg: any) {
+      if (!cfg?.gateway?.mode) {
+        log.warn(
+          "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
+        );
+        return { applied: false as const, cfg };
+      }
       const allowHostControl =
         cfg?.agents?.defaults?.sandbox?.browser?.allowHostControl;
       const headless = cfg?.browser?.headless;
       const currentProfile = cfg?.tools?.profile ?? "coding";
       const profileIsFull = currentProfile === "full";
 
-      // The built-in `browser` tool is in the UI toolgroup. The "coding" profile
-      // excludes UI tools, which prevents specialists spawned by the orchestrator
-      // from using browser navigation/snapshots. Promoting to tools.profile="full"
-      // makes browser available to all agents (including spawned specialists).
       if (allowHostControl === true && headless === true && profileIsFull) {
         return { applied: false as const, cfg };
       }
@@ -595,12 +619,7 @@ const entry = {
       start: async () => {
         if (interval) return;
 
-        let cfgForValidate: any = {};
-        try {
-          cfgForValidate = api.runtime.config.loadConfig() ?? {};
-        } catch {
-          cfgForValidate = {};
-        }
+        let cfgForValidate: any = readFullConfig();
 
         const layoutErrors = validateInstallLayout();
         if (layoutErrors.length > 0) {
@@ -727,7 +746,7 @@ const entry = {
                   return;
                 }
 
-                let cfg0 = api.runtime.config.loadConfig();
+                let cfg0 = readFullConfig();
                 try {
                   const outLimit = await ensureSubagentChildrenLimit(cfg0);
                   cfg0 = outLimit.cfg;
