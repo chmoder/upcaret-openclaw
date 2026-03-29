@@ -3,7 +3,6 @@
 import fs from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { openDb, resolveEnrichmentDbPath } from "./db.js";
-import { normalizeFindingType } from "../../enrichment/scripts/finding-types.js";
 
 function readRawArg() {
   if (process.argv[2] === "--file") {
@@ -96,12 +95,6 @@ function toSourceKey(profile) {
   return createHash("sha256").update(raw).digest("hex").slice(0, 32);
 }
 
-function pickConfidence(value) {
-  const c = String(value || "").trim().toLowerCase();
-  if (c === "high" || c === "medium" || c === "low") return c;
-  return "medium";
-}
-
 function asString(value) {
   return String(value ?? "").trim();
 }
@@ -145,7 +138,7 @@ function upsertProfile(db, profile) {
       ?, ?, ?,
       ?, ?, ?,
       ?, ?, ?,
-      datetime('now'), 'enriched', datetime('now')
+      NULL, 'pending', datetime('now')
     )
     ON CONFLICT(profile_id) DO UPDATE SET
       first_name = excluded.first_name,
@@ -161,8 +154,6 @@ function upsertProfile(db, profile) {
       source_system = excluded.source_system,
       source_key = excluded.source_key,
       source_data = excluded.source_data,
-      enriched_at = datetime('now'),
-      enrichment_status = 'enriched',
       updated_at = datetime('now')`,
   ).run(
     profileId,
@@ -182,32 +173,6 @@ function upsertProfile(db, profile) {
   );
 
   return { action: existingBySource ? "updated" : "inserted", profileId };
-}
-
-function saveFindings(db, profileId, findings, defaultSourceUrl) {
-  db.prepare(`DELETE FROM findings WHERE profile_id = ?`).run(String(profileId));
-  const insertStmt = db.prepare(
-    `INSERT OR IGNORE INTO findings
-     (profile_id, finding_type, finding_value, source_url, source_name, agent_name, confidence, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-  );
-
-  let saved = 0;
-  for (const finding of Array.isArray(findings) ? findings : []) {
-    const value = asString(finding.finding_value);
-    if (!value) continue;
-    const result = insertStmt.run(
-      String(profileId),
-      normalizeFindingType(finding.finding_type),
-      value,
-      asString(finding.source_url) || asString(defaultSourceUrl),
-      asString(finding.source_name),
-      asString(finding.agent_name) || "profile-researcher",
-      pickConfidence(finding.confidence),
-    );
-    saved += result.changes;
-  }
-  return saved;
 }
 
 function main() {
@@ -236,7 +201,6 @@ function main() {
     let inserted = 0;
     let updated = 0;
     let skipped = 0;
-    let findingsSaved = 0;
 
     for (const profile of profiles) {
       const outcome = upsertProfile(db, profile);
@@ -246,12 +210,6 @@ function main() {
       }
       if (outcome.action === "inserted") inserted++;
       if (outcome.action === "updated") updated++;
-      findingsSaved += saveFindings(
-        db,
-        outcome.profileId,
-        profile.findings,
-        profile.source_url,
-      );
     }
 
     console.log(
@@ -260,7 +218,6 @@ function main() {
         updated,
         skipped,
         profiles_total: profiles.length,
-        findings_saved: findingsSaved,
         db_path: dbPath,
       })}`,
     );

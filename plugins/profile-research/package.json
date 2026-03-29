@@ -8,6 +8,7 @@
     "openclaw.plugin.json",
     "plugin-entry.ts",
     "SKILL.md",
+    "INTEGRATION.md",
     "README.md",
     "agents/researcher.md",
     "scripts/db.js",

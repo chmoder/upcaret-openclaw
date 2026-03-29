@@ -33,4 +33,4 @@ Run with a direct agent prompt:
 openclaw agent --agent profile-researcher --message "Find certified financial planners in Austin, TX"
 ```
 
-The agent saves discovered profiles and findings through `scripts/save-profiles.js`.
+The agent saves discovered profiles through `scripts/save-profiles.js` (profiles table only; no findings writes).

@@ -51,16 +51,28 @@ For each discovered person, collect as many of these fields as possible:
 - `location_state`
 - `location_country` (if clear)
 - `source_url`
-- `findings` array with `finding_type`, `finding_value`, `source_url`, `agent_name`, `confidence`
 
-Finding types should align to enrichment finding taxonomy (profile_url, profile_summary, website, social_profile, certification, license, regulatory_id, network_person, network_affiliation, etc.).
+## 5) Save results
 
-## 5) Save-or-continue decision
+After discovering profiles:
+
+1. **Save to enrichment**:
+   ```bash
+   node scripts/save-profiles.js '<json payload>'
+   ```
+   This outputs a JSON line: `SAVED:{ "inserted": N, "updated": M, ... }`
+   Newly inserted profiles are marked pending enrichment (`enriched_at = NULL`, `enrichment_status = 'pending'`). Updates preserve existing enrichment state.
+   This adapter writes `profiles` only (no `findings` writes).
+
+2. **Respond with results**:
+   - Report how many profiles were saved.
+   - Tell the user enrichment is invoked from chat when ready.
+   - If many more profiles are available, note that and suggest continuation steps.
+
+## 6) Continue or stop
 
 1. If you found enough profile information to satisfy the request:
-   - Save immediately via:
-     - `node scripts/save-profiles.js '<json payload>'`
-     - or `node scripts/save-profiles.js --file <path>`
+   - Save as above.
    - Then stop and respond with what was saved.
 
 2. If not enough information is found, but rendered pages contain promising links:
@@ -81,7 +93,7 @@ Finding types should align to enrichment finding taxonomy (profile_url, profile_
 - Render as many pages as needed per query round when they have high likelihood of profile data or links to profile data.
 - Up to 2 additional follow-up link-chasing cycles if the request is not yet satisfied.
 - Stop early when request success criteria are met.
-- Never fabricate people or findings.
+- Never fabricate people.
 
 ## Output format
 
