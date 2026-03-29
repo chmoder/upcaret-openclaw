@@ -4,6 +4,7 @@ This repository holds OpenClaw **plugins** and related docs for upCaret. The cur
 
 - **`plugins/enrichment`**: standalone person enrichment core (unified DB + dispatcher + orchestrator/specialists).
 - **`plugins/sec-iapd`**: optional SEC IAPD source adapter that imports profiles into `enrichment`.
+- **`plugins/profile-research`**: optional general-purpose profile discovery plugin for collecting profiles from web research prompts.
 
 ## Layout
 
@@ -11,6 +12,7 @@ This repository holds OpenClaw **plugins** and related docs for upCaret. The cur
 plugins/
   enrichment/           # standalone enrichment core plugin
   sec-iapd/             # SEC IAPD importer adapter plugin
+  profile-research/     # profile discovery adapter plugin
 ```
 
 Each plugin folder is self-contained: `openclaw.plugin.json`, `plugin-entry.ts`, `SKILL.md`, `package.json`, `scripts/`, `agents/`, `references/`, etc.
@@ -24,6 +26,8 @@ openclaw plugins install enrichment
 openclaw plugins enable enrichment
 openclaw plugins install sec-iapd
 openclaw plugins enable sec-iapd
+openclaw plugins install profile-research
+openclaw plugins enable profile-research
 openclaw gateway restart
 ```
 
