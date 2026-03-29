@@ -23,6 +23,54 @@ const entry = {
       : installedRoot;
     const log = api.logger;
 
+    function normalizeAgentId(id: string) {
+      return (id || "").trim().toLowerCase();
+    }
+
+    // Auto-register the enrichment orchestrator agent on startup.
+    async function ensureEnrichmentOrchestratorAgent() {
+      const desiredId = "profile-enrich";
+      let cfg: any = {};
+      try {
+        cfg = api.runtime.config.loadConfig() ?? {};
+      } catch {
+        cfg = {};
+      }
+      const list: any[] = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
+      const idx = list.findIndex(
+        (a: any) => normalizeAgentId(String(a?.id || "")) === desiredId,
+      );
+      const desiredEntry = (base: any = {}) => {
+        const entry: any = {
+          ...base,
+          id: desiredId,
+          name: base.name ?? "Profile Enrich",
+          workspace: ROOT,
+          model: base.model ?? cfg?.agents?.defaults?.model,
+        };
+        delete entry.tools;
+        return entry;
+      };
+      if (idx >= 0) {
+        const existing = list[idx] ?? {};
+        if (existing.workspace === ROOT && !("tools" in existing)) return;
+      }
+      const patchedList =
+        idx === -1
+          ? [...list, desiredEntry()]
+          : list.map((a: any, i: number) => (i === idx ? desiredEntry(a) : a));
+      const patched = {
+        ...cfg,
+        agents: { ...(cfg?.agents ?? {}), list: patchedList },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      log.info(`Configured enrichment orchestrator agent "${desiredId}" (workspace=${ROOT})`);
+    }
+
+    void ensureEnrichmentOrchestratorAgent().catch((err: any) => {
+      log.warn(`WARN — unable to auto-configure profile-enrich agent: ${String(err?.message ?? err)}`);
+    });
+
     const POLL_INTERVAL_MS = Number.parseInt(
       process.env.ENRICH_ENGINE_INTERVAL_MS || "",
       10,
@@ -42,10 +90,6 @@ const entry = {
     const enrichmentDbPath =
       process.env.ENRICHMENT_DB_PATH ||
       join(api.runtime.state.resolveStateDir(), "enrichment", "enrichment.db");
-
-    function normalizeAgentId(id: string) {
-      return (id || "").trim().toLowerCase();
-    }
 
     async function openEnrichmentDb() {
       const dir = join(enrichmentDbPath, "..");

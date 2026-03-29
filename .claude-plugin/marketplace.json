@@ -19,6 +19,15 @@
         "type": "path",
         "path": "plugins/sec-iapd"
       }
+    },
+    {
+      "name": "profile-research",
+      "version": "1.0.0",
+      "description": "upCaret Profile Research (proprietary)",
+      "source": {
+        "type": "path",
+        "path": "plugins/profile-research"
+      }
     }
   ]
 }
