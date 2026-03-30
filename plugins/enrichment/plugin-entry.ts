@@ -390,11 +390,18 @@ const entry = {
       }
       const allowHostControl =
         cfg?.agents?.defaults?.sandbox?.browser?.allowHostControl;
+      const browserSandboxEnabled =
+        cfg?.agents?.defaults?.sandbox?.browser?.enabled;
       const headless = cfg?.browser?.headless;
       const currentProfile = cfg?.tools?.profile ?? "coding";
       const profileIsFull = currentProfile === "full";
 
-      if (allowHostControl === true && headless === true && profileIsFull) {
+      if (
+        allowHostControl === true &&
+        browserSandboxEnabled === true &&
+        headless === true &&
+        profileIsFull
+      ) {
         return { applied: false as const, cfg };
       }
 
@@ -417,6 +424,7 @@ const entry = {
               browser: {
                 ...(cfg?.agents?.defaults?.sandbox?.browser ?? {}),
                 allowHostControl: true,
+                enabled: true,
               },
             },
           },
@@ -701,11 +709,12 @@ const entry = {
 
       if (
         cfg?.agents?.defaults?.sandbox?.browser?.allowHostControl !== true ||
+        cfg?.agents?.defaults?.sandbox?.browser?.enabled !== true ||
         cfg?.browser?.headless !== true ||
         cfg?.tools?.profile !== "full"
       ) {
         errors.push(
-          'browser.headless, agents.defaults.sandbox.browser.allowHostControl, and tools.profile="full" must all be set. Auto-configured on startup — if this error persists, restart the gateway once more.',
+          'browser.headless, agents.defaults.sandbox.browser.allowHostControl, agents.defaults.sandbox.browser.enabled=true, and tools.profile="full" must all be set. Auto-configured on startup — if this error persists, restart the gateway once more.',
         );
       }
 
@@ -752,7 +761,7 @@ const entry = {
           cfgForValidate = out.cfg;
           if (out.applied) {
             log.error(
-              'Configured browser prerequisites (browser.headless=true, agents.defaults.sandbox.browser.allowHostControl=true, tools.profile="full"). Restart gateway to apply.',
+              'Configured browser prerequisites (browser.headless=true, agents.defaults.sandbox.browser.allowHostControl=true, agents.defaults.sandbox.browser.enabled=true, tools.profile="full"). Restart gateway to apply.',
             );
             return;
           }
@@ -887,7 +896,7 @@ const entry = {
                   cfg0 = out.cfg;
                   if (out.applied) {
                     log.error(
-                      'Configured browser prerequisites (browser.headless=true, agents.defaults.sandbox.browser.allowHostControl=true, tools.profile="full"). Restart gateway to apply.',
+                      'Configured browser prerequisites (browser.headless=true, agents.defaults.sandbox.browser.allowHostControl=true, agents.defaults.sandbox.browser.enabled=true, tools.profile="full"). Restart gateway to apply.',
                     );
                     dispatchCooldownUntilMs = Date.now() + 30_000;
                     return;

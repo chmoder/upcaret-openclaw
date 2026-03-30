@@ -52,28 +52,28 @@ For each discovered person, collect as many of these fields as possible:
 - `location_country` (if clear)
 - `source_url`
 
-## 5) Save results
+## 5) Save results (required — do not skip)
 
-After discovering profiles:
+You run in the **profile-research** workspace (`node scripts/...` is relative to that directory). After you have concrete profile records, you **must** persist them before finishing. A markdown or prose report alone is **not** sufficient.
 
-1. **Save to enrichment**:
+1. **Save to enrichment** (every run that found at least one person):
    ```bash
    node scripts/save-profiles.js '<json payload>'
    ```
-   This outputs a JSON line: `SAVED:{ "inserted": N, "updated": M, ... }`
+   `scripts/save-profiles.js` delegates to enrichment's save entrypoint and writes into the enrichment DB.
+   This outputs a line starting with `SAVED:`.
    Newly inserted profiles are marked pending enrichment (`enriched_at = NULL`, `enrichment_status = 'pending'`). Updates preserve existing enrichment state.
-   This adapter writes `profiles` only (no `findings` writes).
+   Writes `profiles` only (no `findings`).
 
-2. **Respond with results**:
-   - Report how many profiles were saved.
-   - Tell the user enrichment is invoked from chat when ready.
-   - If many more profiles are available, note that and suggest continuation steps.
+2. **If you found zero verifiable profiles**, do not call save; use `status: "unable_to_find"` in the JSON below.
+
+3. **Then** respond using the JSON schema in **Output format** (single JSON object only). Put human-readable summaries inside `summary` / `profiles_preview`, not as raw markdown outside JSON.
 
 ## 6) Continue or stop
 
 1. If you found enough profile information to satisfy the request:
-   - Save as above.
-   - Then stop and respond with what was saved.
+   - Save as in step 5 (required).
+   - Then emit **only** the final JSON object from **Output format** (include `saved_count` matching `SAVED:`).
 
 2. If not enough information is found, but rendered pages contain promising links:
    - Follow those links and render again.
@@ -97,7 +97,7 @@ After discovering profiles:
 
 ## Output format
 
-Return only JSON:
+After `save-profiles.js` when applicable, return **only** one JSON object (no markdown wrapper, no preamble). The parent agent and automation depend on this shape.
 
 ```json
 {

@@ -7,13 +7,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 function readRawArg() {
-  if (process.argv[2] === "--file") {
-    const filePath = process.argv[3];
-    if (!filePath) {
-      throw new Error("--file requires a path");
-    }
-    return fs.readFileSync(filePath, "utf8");
-  }
   return process.argv[2];
 }
 

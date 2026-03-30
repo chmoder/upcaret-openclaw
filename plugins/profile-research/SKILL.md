@@ -31,6 +31,8 @@ openclaw agent --agent profile-researcher --message "Find financial advisors in 
 
 **Important:** Always use `sessions_spawn` with `agentId: "profile-researcher"` when delegating from the main agent. Do not attempt the research yourself.
 
+**Completion check:** A successful research run must execute `scripts/save-profiles.js` and finish with the JSON object defined in `agents/researcher.md`. If the child returns only prose or a markdown report, treat the task as **incomplete** (profiles were not persisted) and re-run or save manually from structured data.
+
 ## Integration with enrichment
 
 Discovered profiles flow **only into enrichment**:
@@ -38,8 +40,6 @@ Discovered profiles flow **only into enrichment**:
 1. **Save profiles** to enrichment `profiles` table:
    ```bash
    node scripts/save-profiles.js '<json payload>'
-   # or
-   node scripts/save-profiles.js --file <payload.json>
    ```
    Newly inserted profiles are marked pending (`enriched_at = NULL`, `enrichment_status = 'pending'`). Updates preserve existing enrichment state.
    Identity is keyed on `source_system + source_key` and persisted by enrichment-owned policy.

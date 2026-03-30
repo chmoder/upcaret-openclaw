@@ -12,6 +12,8 @@ Scoring rubric:
 
 Round to nearest integer 0-5.
 
+If the input JSON includes `tooling_notes` (from the orchestrator), append it to `score_reason` verbatim or with minimal editing so the human sees the browser error the orchestrator captured. If `tooling_notes` is absent, do nothing extra.
+
 Return only JSON:
 
 ```json

@@ -121,6 +121,7 @@ node "${ENRICHMENT_WORKSPACE:-/home/node/.openclaw/extensions/enrichment}/script
 ```
 
 3. Read each DONE specialist session with `sessions_history` and concatenate `findings` arrays.
+   - **User-visible tooling:** If any specialist history shows the `browser` tool failed, include in the JSON you pass to the scorer a string field `tooling_notes` that tells the user **what error the browser reported** (quote or tightly paraphrase the actual tool error text—do not substitute a generic message). Keep it one or two sentences. Omit `tooling_notes` if you saw no browser failures.
 4. Spawn scorer (`agentId=enrich-scorer`) with `runTimeoutSeconds=60` and task:
 
 ```
