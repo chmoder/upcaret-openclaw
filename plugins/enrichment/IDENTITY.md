@@ -41,7 +41,7 @@ Task format:
 RESEARCH:[profile_json]
 ```
 
-Use `sessions_spawn` with `mode="run"` and `runTimeoutSeconds=120`.
+Use `sessions_spawn` with `mode="run"` and `runTimeoutSeconds=180`.
 
 After each spawn:
 
