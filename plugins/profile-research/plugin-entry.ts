@@ -115,6 +115,40 @@ const entry = {
       );
     }
 
+    async function ensureAcpAllowedAgents() {
+      const cfg: any = readFullConfig();
+      if (!cfg?.gateway?.mode) {
+        log.warn(
+          "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
+        );
+        return;
+      }
+      const allow0 = Array.isArray(cfg?.acp?.allowedAgents)
+        ? cfg.acp.allowedAgents
+        : [];
+      const required = ["profile-researcher"];
+      const allow = Array.from(
+        new Set([
+          ...allow0.map((id: any) => String(id || "").trim()).filter(Boolean),
+          ...required,
+        ]),
+      );
+      const same =
+        allow.length === allow0.length &&
+        allow.every((id: any, i: number) => String(id) === String(allow0[i]));
+      if (same) return;
+
+      const patched = {
+        ...cfg,
+        acp: {
+          ...(cfg?.acp ?? {}),
+          allowedAgents: allow,
+        },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      log.info(`Ensured acp.allowedAgents includes: ${required.join(", ")}`);
+    }
+
     void ensureProfileResearchAgent().catch((err: any) => {
       log.warn(
         `WARN — unable to auto-configure profile-researcher agent: ${String(err?.message ?? err)}`,
@@ -123,6 +157,12 @@ const entry = {
 
     void ensureTrustedPluginsAllow().catch((err: any) => {
       log.warn(`WARN — unable to pin plugins.allow: ${String(err?.message ?? err)}`);
+    });
+
+    void ensureAcpAllowedAgents().catch((err: any) => {
+      log.warn(
+        `WARN — unable to auto-configure acp.allowedAgents: ${String(err?.message ?? err)}`,
+      );
     });
 
   },

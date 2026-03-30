@@ -166,9 +166,88 @@ const entry = {
       );
     }
 
+    function makeWorkspaceShimScript(scriptName: string) {
+      return `#!/usr/bin/env node
+// openclaw-managed: enrichment-consumer-shim v2
+const { spawnSync } = require("node:child_process");
+const fs = require("node:fs");
+const path = require("node:path");
+const scriptName = ${JSON.stringify(scriptName)};
+const candidates = [
+  process.env.ENRICHMENT_WORKSPACE
+    ? path.join(process.env.ENRICHMENT_WORKSPACE, "scripts", scriptName)
+    : null,
+  process.env.OPENCLAW_HOME
+    ? path.join(process.env.OPENCLAW_HOME, "extensions", "enrichment", "scripts", scriptName)
+    : null,
+  path.resolve(__dirname, "..", "..", "extensions", "enrichment", "scripts", scriptName),
+].filter(Boolean);
+const target = candidates.find((p) => fs.existsSync(p));
+if (!target) {
+  console.error("ERROR: enrichment script not found for " + scriptName);
+  process.exit(1);
+}
+const out = spawnSync(process.execPath, [target, ...process.argv.slice(2)], {
+  stdio: "inherit",
+  env: process.env,
+});
+if (out.error) {
+  console.error("ERROR:" + String(out.error.message || out.error));
+  process.exit(1);
+}
+process.exit(typeof out.status === "number" ? out.status : 1);
+`;
+    }
+
+    async function ensureWorkspaceConsumerScripts(cfg: any) {
+      if (!cfg?.gateway?.mode) {
+        log.warn(
+          "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
+        );
+        return;
+      }
+      const workspace = String(
+        cfg?.agents?.defaults?.workspace || join(stateDir, "workspace"),
+      ).trim() || join(stateDir, "workspace");
+      const scriptsDir = join(workspace, "scripts");
+      fs.mkdirSync(scriptsDir, { recursive: true });
+
+      const shims = [
+        { name: "save-profiles.js" },
+        { name: "enqueue.js" },
+      ];
+      const written: string[] = [];
+      for (const shim of shims) {
+        const outPath = join(scriptsDir, shim.name);
+        const next = makeWorkspaceShimScript(shim.name);
+        const marker = "openclaw-managed: enrichment-consumer-shim";
+        if (existsSync(outPath)) {
+          try {
+            const existing = fs.readFileSync(outPath, "utf8");
+            if (!existing.includes(marker)) {
+              log.warn(
+                `Workspace shim not installed (existing unmanaged file): ${outPath}`,
+              );
+              continue;
+            }
+            if (existing === next) continue;
+          } catch {}
+        }
+        fs.writeFileSync(outPath, next, "utf8");
+        try {
+          fs.chmodSync(outPath, 0o755);
+        } catch {}
+        written.push(outPath);
+      }
+      if (written.length > 0) {
+        log.info(`Installed workspace consumer shims: ${written.join(", ")}`);
+      }
+    }
+
     void (async () => {
       await ensureTrustedPluginsAllow();
       await ensureEnrichmentAgents();
+      await ensureWorkspaceConsumerScripts(readFullConfig());
     })().catch((err: any) => {
       log.warn(
         `WARN — unable to auto-configure enrichment startup config: ${String(err?.message ?? err)}`,
@@ -703,141 +782,55 @@ const entry = {
       );
       const turnSec =
         Number.isFinite(turnSecRaw) && turnSecRaw >= 60 ? turnSecRaw : 300;
-      const maxTicksRaw = Number.parseInt(
-        process.env.ENRICH_MAX_TICKS || "",
-        10,
-      );
-      const maxTicks =
-        Number.isFinite(maxTicksRaw) && maxTicksRaw > 0 ? maxTicksRaw : 40;
-      const pauseMsRaw = Number.parseInt(
-        process.env.ENRICH_TICK_PAUSE_MS || "",
-        10,
-      );
-      const pauseMs =
-        Number.isFinite(pauseMsRaw) && pauseMsRaw >= 0 ? pauseMsRaw : 4_000;
       const enrichPrefix =
         String(params.messagePrefix || "ENRICH").trim() || "ENRICH";
       const payload = String(params.payloadJson || "");
       const env = agentRunEnv(params);
 
       const runPromise = (async () => {
-        type Phase = "enrich" | "complete" | "complete_tick";
-        let phase: Phase = "enrich";
-        let enrichStdout = "";
-        let completeStdout = "";
-        for (let i = 0; i < maxTicks; i++) {
-          let advanceToComplete = false;
-          let db0: any | null = null;
-          try {
-            db0 = await openEnrichmentDb();
-            const row = db0
-              .prepare(`SELECT status FROM enrichment_jobs WHERE job_id = ?`)
-              .get(params.jobId);
-            if (!row || row.status !== "running") {
-              if (row?.status === "done") return { ok: true as const };
-              return {
-                ok: false as const,
-                error: `enrich stopped: job ${params.jobId} not running (status=${row?.status ?? "missing"})`,
-              };
-            }
-            reconcilePendingSpecialistsFromSessions(
-              db0,
-              params.jobId,
-              params.agentId,
-            );
-            if (phase === "enrich") {
-              const counts = db0
-                .prepare(
-                  `SELECT
-                     COUNT(*) AS total,
-                     SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END) AS pending
-                   FROM enrichment_specialist_runs
-                   WHERE job_id = ?`,
-                )
-                .get(params.jobId);
-              const total = Number(counts?.total || 0);
-              const pending = Number(counts?.pending || 0);
-              if (total >= 10 && pending === 0) {
-                advanceToComplete = true;
-              }
-            }
-          } finally {
-            if (db0) {
-              try {
-                db0.close();
-              } catch {}
-            }
-          }
-          if (advanceToComplete) {
-            await resetSessionBestEffort(params.agentId);
-            await new Promise((res) => setTimeout(res, 2_000));
-            phase = "complete";
-            completeStdout = "";
-          }
-
-          const isFirst = i === 0;
-          const message =
-            phase === "enrich"
-              ? isFirst
-                ? `${enrichPrefix}:${payload}`
-                : `TICK:${payload}`
-              : phase === "complete"
-                ? `COMPLETE:${payload}`
-                : `COMPLETE_TICK:${payload}`;
-
-          const argv = [
-            "openclaw",
-            "agent",
-            "--agent",
-            params.agentId,
-            "--message",
-            message,
-            "--timeout",
-            String(turnSec),
-          ];
-          const r: any = await api.runtime.system.runCommandWithTimeout(argv, {
-            timeoutMs: turnSec * 1000 + 45_000,
-            env,
-          });
-          if (phase === "enrich") enrichStdout += String(r?.stdout ?? "");
-          else completeStdout += String(r?.stdout ?? "");
-
-          if (
-            enrichStdout.includes("DONE:") ||
-            completeStdout.includes("DONE:")
-          ) {
-            return { ok: true as const };
-          }
-
-          if (
-            phase === "enrich" &&
-            enrichStdout.includes("ALL_SPECIALISTS_DONE:")
-          ) {
-            await resetSessionBestEffort(params.agentId);
-            await new Promise((res) => setTimeout(res, 2_000));
-            phase = "complete";
-            completeStdout = "";
-          } else if (
-            phase === "complete" &&
-            completeStdout.includes("SCORE_SPAWNED:")
-          ) {
-            phase = "complete_tick";
-          }
-
-          if (r?.code !== 0 && i === maxTicks - 1) {
+        let db0: any | null = null;
+        try {
+          db0 = await openEnrichmentDb();
+          const row = db0
+            .prepare(`SELECT status FROM enrichment_jobs WHERE job_id = ?`)
+            .get(params.jobId);
+          if (!row || row.status !== "running") {
+            if (row?.status === "done") return { ok: true as const };
             return {
               ok: false as const,
-              error: formatAgentFailure(params.jobId, r),
+              error: `enrich stopped: job ${params.jobId} not running (status=${row?.status ?? "missing"})`,
             };
           }
-          if (i < maxTicks - 1 && pauseMs > 0) {
-            await new Promise((res) => setTimeout(res, pauseMs));
+        } finally {
+          if (db0) {
+            try {
+              db0.close();
+            } catch {}
           }
         }
-        return {
-          ok: false as const,
-          error: `enrich exceeded ${maxTicks} turns without DONE: (job=${params.jobId})`,
-        };
+
+        const message = `${enrichPrefix}:${payload}`;
+        const argv = [
+          "openclaw",
+          "agent",
+          "--agent",
+          params.agentId,
+          "--message",
+          message,
+          "--timeout",
+          String(turnSec),
+        ];
+        const r: any = await api.runtime.system.runCommandWithTimeout(argv, {
+          timeoutMs: turnSec * 1000 + 45_000,
+          env,
+        });
+        if (r?.code !== 0) {
+          return {
+            ok: false as const,
+            error: formatAgentFailure(params.jobId, r),
+          };
+        }
+        return { ok: true as const };
       })();
 
       return {
@@ -849,6 +842,277 @@ const entry = {
               error: `enrich loop failed (job=${params.jobId}): ${String(err?.message ?? err)}`,
             })),
       };
+    }
+
+    function parseJsonObjectFromText(text: string) {
+      const md = extractJsonFromMarkdown(text);
+      if (md && typeof md === "object") return md;
+      const s = String(text || "").trim();
+      const first = s.indexOf("{");
+      const last = s.lastIndexOf("}");
+      if (first >= 0 && last > first) {
+        try {
+          return JSON.parse(s.slice(first, last + 1));
+        } catch {}
+      }
+      return null;
+    }
+
+    function collectSpecialistFindingsFromDb(db: any, jobId: string) {
+      const rows = db
+        .prepare(
+          `SELECT specialist_name, status, result_json
+           FROM enrichment_specialist_runs
+           WHERE job_id=?
+           ORDER BY specialist_name`,
+        )
+        .all(jobId);
+      const findings: any[] = [];
+      for (const row of rows) {
+        const specialist = String(row.specialist_name || "").trim();
+        if (String(row.status || "") !== "DONE") continue;
+        const raw = String(row.result_json || "").trim();
+        if (!raw) continue;
+        try {
+          const parsed = JSON.parse(raw);
+          const arr = Array.isArray(parsed?.findings) ? parsed.findings : [];
+          for (const f of arr) {
+            if (!f || typeof f !== "object") continue;
+            findings.push({
+              ...f,
+              agent_name: String(f.agent_name || specialist),
+            });
+          }
+        } catch {}
+      }
+      return findings;
+    }
+
+    async function finalizeRunningJobDeterministic(params: {
+      jobId: string;
+      profileId: string;
+      payloadJson: string;
+      workspacePath: string;
+    }) {
+      const env = agentRunEnv({
+        jobId: params.jobId,
+        profileId: params.profileId,
+        workspacePath: params.workspacePath,
+      });
+
+      let db0: any | null = null;
+      let findings: any[] = [];
+      try {
+        db0 = await openEnrichmentDb();
+        findings = collectSpecialistFindingsFromDb(db0, params.jobId);
+        insertEnrichmentEvent(db0, {
+          jobId: params.jobId,
+          eventType: "specialists_terminal",
+          message: `all specialists terminal for job=${params.jobId}`,
+          context: {
+            profile_id: params.profileId,
+            findings_count: findings.length,
+          },
+          dedupe: true,
+        });
+      } finally {
+        if (db0) {
+          try {
+            db0.close();
+          } catch {}
+        }
+      }
+
+      let payload: any = {};
+      try {
+        payload = JSON.parse(String(params.payloadJson || "{}"));
+      } catch {}
+      const profileName =
+        String(
+          payload?.display_name ||
+            `${String(payload?.first_name || "").trim()} ${String(payload?.last_name || "").trim()}`.trim() ||
+            params.profileId,
+        ).trim() || params.profileId;
+
+      let scorerInput = "";
+      try {
+        scorerInput = JSON.stringify({
+          profile_id: params.profileId,
+          name: profileName,
+          findings,
+        });
+      } catch (err: any) {
+        return {
+          ok: false as const,
+          error: `scorer payload serialization failed: ${String(err?.message ?? err)}`,
+        };
+      }
+
+      let db1: any | null = null;
+      try {
+        db1 = await openEnrichmentDb();
+        insertEnrichmentEvent(db1, {
+          jobId: params.jobId,
+          eventType: "scorer_started",
+          message: `starting scorer for job=${params.jobId}`,
+          context: {
+            profile_id: params.profileId,
+            findings_count: findings.length,
+          },
+        });
+      } finally {
+        if (db1) {
+          try {
+            db1.close();
+          } catch {}
+        }
+      }
+
+      const scoreTimeoutRaw = Number.parseInt(
+        process.env.ENRICH_SCORE_TIMEOUT_SEC || "",
+        10,
+      );
+      const scoreTimeout =
+        Number.isFinite(scoreTimeoutRaw) && scoreTimeoutRaw >= 30
+          ? scoreTimeoutRaw
+          : 180;
+      const scoreRun: any = await api.runtime.system.runCommandWithTimeout(
+        [
+          "openclaw",
+          "agent",
+          "--agent",
+          "enrich-scorer",
+          "--message",
+          `SCORE:${scorerInput}`,
+          "--timeout",
+          String(scoreTimeout),
+        ],
+        {
+          timeoutMs: scoreTimeout * 1000 + 45_000,
+          env,
+        },
+      );
+      if (scoreRun?.code !== 0) {
+        return {
+          ok: false as const,
+          error: `scorer command failed: ${formatAgentFailure(params.jobId, scoreRun)}`,
+        };
+      }
+
+      const parsedScore = parseJsonObjectFromText(String(scoreRun?.stdout ?? ""));
+      if (!parsedScore || typeof parsedScore !== "object") {
+        let db2: any | null = null;
+        try {
+          db2 = await openEnrichmentDb();
+          insertEnrichmentEvent(db2, {
+            jobId: params.jobId,
+            eventType: "scorer_failed_parse",
+            message: "failed to parse scorer JSON output",
+            context: {
+              stdout: String(scoreRun?.stdout ?? "").slice(0, 4000),
+            },
+          });
+        } finally {
+          if (db2) {
+            try {
+              db2.close();
+            } catch {}
+          }
+        }
+        return {
+          ok: false as const,
+          error: "failed to parse scorer JSON output",
+        };
+      }
+
+      const savePayload = {
+        profile_id: String(parsedScore.profile_id || params.profileId),
+        enrichment_score: Number(parsedScore.enrichment_score) || 0,
+        score_reason: String(parsedScore.score_reason || ""),
+        findings,
+      };
+
+      let db3: any | null = null;
+      try {
+        db3 = await openEnrichmentDb();
+        insertEnrichmentEvent(db3, {
+          jobId: params.jobId,
+          eventType: "save_started",
+          message: `starting save-enrichment for job=${params.jobId}`,
+          context: {
+            profile_id: params.profileId,
+            enrichment_score: savePayload.enrichment_score,
+            findings_count: findings.length,
+          },
+        });
+      } finally {
+        if (db3) {
+          try {
+            db3.close();
+          } catch {}
+        }
+      }
+
+      const saveRun: any = await api.runtime.system.runCommandWithTimeout(
+        [
+          "node",
+          join(ROOT, "scripts", "save-enrichment.js"),
+          JSON.stringify(savePayload),
+        ],
+        {
+          timeoutMs: 60_000,
+          env,
+        },
+      );
+      if (saveRun?.code !== 0 || !String(saveRun?.stdout ?? "").includes("SAVED:")) {
+        let db4: any | null = null;
+        try {
+          db4 = await openEnrichmentDb();
+          insertEnrichmentEvent(db4, {
+            jobId: params.jobId,
+            eventType: "save_failed",
+            message: "save-enrichment command failed",
+            context: {
+              code: saveRun?.code ?? null,
+              stdout: String(saveRun?.stdout ?? "").slice(0, 4000),
+              stderr: String(saveRun?.stderr ?? "").slice(0, 4000),
+            },
+          });
+        } finally {
+          if (db4) {
+            try {
+              db4.close();
+            } catch {}
+          }
+        }
+        return {
+          ok: false as const,
+          error: `save-enrichment failed (exit=${String(saveRun?.code ?? "unknown")})`,
+        };
+      }
+
+      let db5: any | null = null;
+      try {
+        db5 = await openEnrichmentDb();
+        insertEnrichmentEvent(db5, {
+          jobId: params.jobId,
+          eventType: "job_done",
+          message: `deterministic finalize complete for profile_id=${params.profileId}`,
+          context: {
+            profile_id: params.profileId,
+            enrichment_score: savePayload.enrichment_score,
+            findings_count: findings.length,
+          },
+        });
+      } finally {
+        if (db5) {
+          try {
+            db5.close();
+          } catch {}
+        }
+      }
+
+      return { ok: true as const };
     }
 
     function validateInstallLayout(): string[] {
@@ -895,6 +1159,7 @@ const entry = {
     let interval: ReturnType<typeof setInterval> | null = null;
     let tickInFlight: Promise<void> | null = null;
     let activeRun: null | { jobId: string; wait: () => Promise<any> } = null;
+    let finalizingJobId: string | null = null;
     let dispatchCooldownUntilMs = 0;
     let lastIdleLogAt = 0;
 
@@ -1002,23 +1267,68 @@ const entry = {
               const state = await getQueueState(db);
 
               if (state.state === "running") {
+                const runningJobId = String(state.row.job_id || "");
                 const runningAgentId = String(
                   state.row.orchestrator_agent_id || "",
                 ).trim();
                 if (runningAgentId) {
                   reconcilePendingSpecialistsFromSessions(
                     db,
-                    String(state.row.job_id),
+                    runningJobId,
                     runningAgentId,
                   );
+                }
+                const counts = db
+                  .prepare(
+                    `SELECT
+                       COUNT(*) AS total,
+                       SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END) AS pending
+                     FROM enrichment_specialist_runs
+                     WHERE job_id = ?`,
+                  )
+                  .get(runningJobId);
+                const total = Number(counts?.total || 0);
+                const pending = Number(counts?.pending || 0);
+                const allTerminal = total >= 10 && pending === 0;
+                if (allTerminal) {
+                  if (finalizingJobId && finalizingJobId !== runningJobId) return;
+                  finalizingJobId = runningJobId;
+                  const workspacePath =
+                    String(
+                      state.row.orchestrator_workspace ||
+                        process.env.ENRICHMENT_WORKSPACE ||
+                        ROOT,
+                    ).trim() || ROOT;
+                  let finalizeResult: any = null;
+                  try {
+                    finalizeResult = await finalizeRunningJobDeterministic({
+                      jobId: runningJobId,
+                      profileId: String(state.row.profile_id || ""),
+                      payloadJson: String(state.row.payload_json || ""),
+                      workspacePath,
+                    });
+                  } finally {
+                    if (finalizingJobId === runningJobId) finalizingJobId = null;
+                  }
+                  if (!finalizeResult.ok) {
+                    await markFailed(
+                      db,
+                      runningJobId,
+                      String(finalizeResult.error || "deterministic finalization failed").slice(
+                        0,
+                        1000,
+                      ),
+                    );
+                  }
+                  return;
                 }
                 if (state.elapsedMs > staleMs) {
                   await markFailed(
                     db,
-                    String(state.row.job_id),
+                    runningJobId,
                     `stale timeout (${Math.round(staleMs / 60_000)} min)`,
                   );
-                  if (activeRun?.jobId === String(state.row.job_id)) {
+                  if (activeRun?.jobId === runningJobId) {
                     activeRun = null;
                     dispatchCooldownUntilMs = Date.now() + 5_000;
                   }

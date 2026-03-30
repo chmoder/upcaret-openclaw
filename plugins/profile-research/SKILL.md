@@ -31,6 +31,8 @@ openclaw agent --agent profile-researcher --message "Find financial advisors in 
 
 **Important:** Always use `sessions_spawn` with `agentId: "profile-researcher"` when delegating from the main agent. Do not attempt the research yourself.
 
+**ACP vs native subagent:** If you use `sessions_spawn` with **`runtime: "acp"`**, the gateway must have the **`@openclaw/acpx`** plugin installed and enabled, and `openclaw.json` must configure `acp` + `plugins.entries.acpx`. Enabling `profile-research` does **not** install that stack. The usual native path uses **`runtime: "subagent"`** (or the default subagent flow), which does **not** require `acpx`. If you see “ACP runtime backend is not configured,” install `acpx` or switch to native subagent delegation.
+
 **Completion check:** A successful research run must execute `scripts/save-profiles.js` and finish with the JSON object defined in `agents/researcher.md`. If the child returns only prose or a markdown report, treat the task as **incomplete** (profiles were not persisted) and re-run or save manually from structured data.
 
 ## Integration with enrichment

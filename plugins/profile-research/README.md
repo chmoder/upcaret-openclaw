@@ -13,6 +13,10 @@ This plugin handles creative profile discovery requests, including:
 
 Install and enable `enrichment` first.
 
+## ACP / `acpx` (optional)
+
+This plugin does **not** install the ACP backend. If something delegates with `sessions_spawn` and **`runtime: "acp"`**, install **`@openclaw/acpx`** on the gateway host, enable it in `openclaw.json`, add the `acp` settings, restart the gateway, and run `/acp doctor`. Normal **`profile-researcher`** use via **subagent** (or `openclaw agent --agent profile-researcher`) does not require ACP.
+
 ## Install
 
 ```bash

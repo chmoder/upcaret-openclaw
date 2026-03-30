@@ -83,17 +83,8 @@ node scripts/record-enrichment.js specialist-list \
 
 For each row `PENDING:<name>:<childSessionKey>:<elapsed_secs>`:
 
-- Call `sessions_history({ sessionKey: "<childSessionKey>", limit: 5 })`
-- If JSON result exists -> mark DONE.
-- If no response and elapsed >= 185 -> mark FAILED.
+- If elapsed >= 185 -> mark FAILED.
 - Otherwise leave pending.
-
-Done command:
-
-```bash
-node scripts/record-enrichment.js specialist-done \
-  --profile-id <PROFILE_ID> --specialist <name>
-```
 
 Fail command:
 
@@ -112,61 +103,6 @@ ALL_SPECIALISTS_DONE:{"profile_id":"<PROFILE_ID>"}
 
 Then stop.
 
-## COMPLETE:{...same profile_json...}
-
-1. Verify active run with `queue-status`; if `IDLE`, output `ERROR:no_active_enrichment`.
-2. List DONE specialists:
-
-```bash
-node scripts/record-enrichment.js specialist-list \
-  --profile-id <PROFILE_ID> --status DONE
-```
-
-3. Read each DONE specialist session with `sessions_history` and concatenate `findings` arrays.
-   - **User-visible tooling:** If any specialist history shows the `browser` tool failed, include in the JSON you pass to the scorer a string field `tooling_notes` that tells the user **what error the browser reported** (quote or tightly paraphrase the actual tool error text—do not substitute a generic message). Keep it one or two sentences. Omit `tooling_notes` if you saw no browser failures.
-4. Spawn scorer (`agentId=enrich-scorer`) with `runTimeoutSeconds=60` and task:
-
-```
-[full agents/scorer.md contents]
----
-SCORE:{"profile_id":"<PROFILE_ID>","name":"<name>","findings":[...]}
-```
-
-5. Output:
-
-```
-SCORE_SPAWNED:{"profile_id":"<PROFILE_ID>"}
-```
-
-Then stop.
-
-## COMPLETE_TICK:{...same profile_json...}
-
-1. Check scorer session via `sessions_history`.
-2. If scorer not ready, output `COMPLETE_PARTIAL:{"profile_id":"<PROFILE_ID>"}` and stop.
-3. Save with:
-
-```bash
-node scripts/save-enrichment.js '<json>'
-```
-
-JSON shape:
-
-```json
-{
-  "profile_id": "<PROFILE_ID>",
-  "enrichment_score": 4,
-  "score_reason": "reason",
-  "findings": []
-}
-```
-
-4. Only after `SAVED:` output:
-
-```
-DONE:{"profile_id":"<PROFILE_ID>","enrichment_score":4,"findings_count":12}
-```
-
 ## STATUS or ENV
 
 Run:
@@ -181,7 +117,7 @@ Return output.
 
 1. Never fabricate findings.
 2. Always spawn all 10 specialists before yielding.
-3. Never output `DONE:` before `save-enrichment.js` returns `SAVED:`.
+3. Never call `sessions_history` in this orchestrator.
 4. If `sessions_spawn` is unavailable, log and fail queue:
 
 ```bash

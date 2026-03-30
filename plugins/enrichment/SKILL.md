@@ -28,3 +28,7 @@ and then enriched through the same queue and orchestrator flow.
 - The dispatcher service in `plugin-entry.ts` polls queued jobs and drives ENRICH/TICK/COMPLETE turns.
 - Orchestrator agent id defaults to `profile-enrich` unless overridden by `ENRICH_ORCH_AGENT_ID`.
 - Findings are saved by `scripts/save-enrichment.js` to `findings`, and profile summary fields are updated in `profiles`.
+
+## Cross-plugin note (ACP)
+
+Delegating to other agents with **`runtime: "acp"`** needs the **`@openclaw/acpx`** plugin and `acp` config on the gateway; installing or enabling **enrichment** does not set that up. The enrichment orchestrator uses native **subagent** specialists by default. See `VALIDATION_RUNBOOK.md` (ACP section) and, at repo root, `config/snippets/openclaw-acp-acpx.json`.
