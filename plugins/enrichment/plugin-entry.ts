@@ -659,6 +659,109 @@ process.exit(typeof out.status === "number" ? out.status : 1);
       ).run(params.jobId, params.eventType, params.message, contextJson);
     }
 
+    function parseSqliteDateToMs(value: any) {
+      const s = String(value || "").trim();
+      if (!s) return null;
+      const iso = s.includes("T") ? s : `${s.replace(" ", "T")}Z`;
+      const ms = Date.parse(iso);
+      return Number.isFinite(ms) ? ms : null;
+    }
+
+    function parseSpecialistNameFromTask(task: string) {
+      const m = String(task || "").match(/#\s*([A-Za-z]+)\s+Specialist/i);
+      if (!m) return null;
+      const raw = String(m[1] || "").trim().toLowerCase();
+      const map: Record<string, string> = {
+        profile: "profile",
+        email: "email",
+        phone: "phone",
+        website: "website",
+        linkedin: "linkedin",
+        certification: "cert",
+        cert: "cert",
+        award: "award",
+        speaking: "speaking",
+        news: "news",
+        network: "network",
+      };
+      return map[raw] || null;
+    }
+
+    function seedSpecialistRunsFromLedger(
+      db: any,
+      params: { jobId: string; profileId: string; agentId: string; startedAt?: any },
+    ) {
+      const runsPath = join(stateDir, "subagents", "runs.json");
+      if (!existsSync(runsPath)) return 0;
+      const startedMs = parseSqliteDateToMs(params.startedAt);
+      let root: any = null;
+      try {
+        root = JSON.parse(fs.readFileSync(runsPath, "utf8") || "{}");
+      } catch {
+        return 0;
+      }
+      const allRuns: any[] = Object.values(root?.runs || {});
+      if (allRuns.length === 0) return 0;
+      const controllerSessionKey = `agent:${params.agentId}:main`;
+      const bySpecialist = new Map<string, { childSessionKey: string; createdAt: number }>();
+      for (const r of allRuns) {
+        const childSessionKey = String(r?.childSessionKey || "").trim();
+        const task = String(r?.task || "");
+        if (!childSessionKey || !task) continue;
+        if (String(r?.controllerSessionKey || "") !== controllerSessionKey) continue;
+        if (!task.includes(`"profile_id":"${params.profileId}"`)) continue;
+        const specialist = parseSpecialistNameFromTask(task);
+        if (!specialist) continue;
+        const createdAt = Number(r?.createdAt || 0);
+        if (startedMs && Number.isFinite(createdAt) && createdAt < startedMs - 30_000) {
+          continue;
+        }
+        const prev = bySpecialist.get(specialist);
+        if (!prev || createdAt > prev.createdAt) {
+          bySpecialist.set(specialist, {
+            childSessionKey,
+            createdAt: Number.isFinite(createdAt) ? createdAt : 0,
+          });
+        }
+      }
+      if (bySpecialist.size === 0) return 0;
+
+      const existingRows = db
+        .prepare(
+          `SELECT specialist_name
+           FROM enrichment_specialist_runs
+           WHERE job_id = ?`,
+        )
+        .all(params.jobId);
+      const existing = new Set(
+        existingRows.map((r: any) => String(r?.specialist_name || "").trim()),
+      );
+
+      let inserted = 0;
+      for (const [specialist, info] of bySpecialist.entries()) {
+        if (existing.has(specialist)) continue;
+        db.prepare(
+          `INSERT INTO enrichment_specialist_runs (
+             job_id, specialist_name, child_session_key, status, spawned_at
+           ) VALUES (?, ?, ?, 'PENDING', datetime('now'))`,
+        ).run(params.jobId, specialist, info.childSessionKey);
+        inserted++;
+      }
+      if (inserted > 0) {
+        insertEnrichmentEvent(db, {
+          jobId: params.jobId,
+          eventType: "specialist_seeded_from_ledger",
+          message: `seeded ${inserted} specialist rows from subagent runs ledger`,
+          context: {
+            profile_id: params.profileId,
+            controller_session_key: controllerSessionKey,
+          },
+          dedupe: false,
+        });
+      }
+      return inserted;
+    }
+
     function reconcilePendingSpecialistsFromSessions(
       db: any,
       jobId: string,
@@ -1271,6 +1374,14 @@ process.exit(typeof out.status === "number" ? out.status : 1);
                 const runningAgentId = String(
                   state.row.orchestrator_agent_id || "",
                 ).trim();
+                if (runningAgentId) {
+                  seedSpecialistRunsFromLedger(db, {
+                    jobId: runningJobId,
+                    profileId: String(state.row.profile_id || ""),
+                    agentId: runningAgentId,
+                    startedAt: state.row.started_at,
+                  });
+                }
                 if (runningAgentId) {
                   reconcilePendingSpecialistsFromSessions(
                     db,
