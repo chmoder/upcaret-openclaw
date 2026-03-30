@@ -465,13 +465,20 @@ const entry = {
       }
     }
 
-    function agentRunEnv(params: { jobId: string; profileId: string }) {
+    function agentRunEnv(params: {
+      jobId: string;
+      profileId: string;
+      workspacePath: string;
+    }) {
       const configPath =
         process.env.OPENCLAW_CONFIG_PATH || join(stateDir, "openclaw.json");
+      const workspacePath =
+        String(params.workspacePath || "").trim() || ROOT;
       return {
         ...process.env,
         OPENCLAW_STATE_DIR: stateDir,
         OPENCLAW_CONFIG_PATH: configPath,
+        ENRICHMENT_WORKSPACE: workspacePath,
         ENRICHMENT_DB_PATH: enrichmentDbPath,
         ENRICHMENT_ENGINE_WORKSPACE: ROOT,
         ENRICHMENT_JOB_ID: params.jobId,
@@ -494,49 +501,189 @@ const entry = {
       return `openclaw agent failed (job=${jobId}): ${detail}`;
     }
 
+    function parseChildSessionKey(rawKey: string) {
+      const key = String(rawKey || "").trim();
+      const m = key.match(/^agent:([^:]+):subagent:([^:]+)$/);
+      if (!m) return null;
+      return { key, childAgentId: m[1], subagentId: m[2] };
+    }
+
+    function extractJsonFromMarkdown(text: string) {
+      if (typeof text !== "string") return null;
+      const m = text.match(/```json\s*([\s\S]*?)```/);
+      if (!m) return null;
+      try {
+        return JSON.parse(m[1].trim());
+      } catch {
+        return null;
+      }
+    }
+
+    function parseFinalSpecialistResultJson(jsonlPath: string) {
+      try {
+        if (!existsSync(jsonlPath)) return null;
+        const lines = fs.readFileSync(jsonlPath, "utf8").split("\n").filter(Boolean);
+        let lastParsed: any = null;
+        for (const ln of lines) {
+          let ev: any = null;
+          try {
+            ev = JSON.parse(ln);
+          } catch {
+            continue;
+          }
+          if (
+            ev?.type === "message" &&
+            ev?.message?.role === "assistant" &&
+            Array.isArray(ev?.message?.content)
+          ) {
+            for (const c of ev.message.content) {
+              if (c?.type !== "text" || typeof c?.text !== "string") continue;
+              const parsed = extractJsonFromMarkdown(c.text);
+              if (parsed && typeof parsed === "object") lastParsed = parsed;
+            }
+          }
+        }
+        return lastParsed ? JSON.stringify(lastParsed) : null;
+      } catch {
+        return null;
+      }
+    }
+
+    function insertEnrichmentEvent(
+      db: any,
+      params: {
+        jobId: string;
+        eventType: string;
+        message: string;
+        context?: Record<string, any>;
+        dedupe?: boolean;
+      },
+    ) {
+      const contextJson = params.context ? JSON.stringify(params.context) : null;
+      if (params.dedupe) {
+        const exists = db
+          .prepare(
+            `SELECT 1
+             FROM enrichment_events
+             WHERE job_id=?
+               AND event_type=?
+               AND message=?
+               AND COALESCE(context_json,'')=COALESCE(?,'')
+             LIMIT 1`,
+          )
+          .get(params.jobId, params.eventType, params.message, contextJson);
+        if (exists) return;
+      }
+      db.prepare(
+        `INSERT INTO enrichment_events (job_id, event_type, message, context_json, created_at)
+         VALUES (?, ?, ?, ?, datetime('now'))`,
+      ).run(params.jobId, params.eventType, params.message, contextJson);
+    }
+
     function reconcilePendingSpecialistsFromSessions(
       db: any,
       jobId: string,
       agentId: string,
     ): number {
-      const aid = String(agentId || "").trim();
-      if (!aid) return 0;
-      const sessionsJsonPath = join(
-        stateDir,
-        "agents",
-        aid,
-        "sessions",
-        "sessions.json",
-      );
-      if (!existsSync(sessionsJsonPath)) return 0;
-      let map: Record<string, any>;
-      try {
-        map = JSON.parse(fs.readFileSync(sessionsJsonPath, "utf8"));
-      } catch {
-        return 0;
-      }
+      void agentId; // hard cutover: use child session key agent id only
+      const sessionsCache = new Map<
+        string,
+        { ok: true; map: Record<string, any>; sessionsDir: string } | { ok: false; reason: string; sessionsJsonPath: string }
+      >();
       const pending = db
         .prepare(
           `SELECT specialist_name, child_session_key
            FROM enrichment_specialist_runs
            WHERE job_id = ?
-             AND status = 'PENDING'
-             AND child_session_key IS NOT NULL
-             AND LENGTH(TRIM(child_session_key)) > 0`,
+             AND status = 'PENDING'`,
         )
         .all(jobId);
       let n = 0;
       for (const row of pending) {
         const key = String(row.child_session_key || "").trim();
-        if (!key) continue;
-        const st = String(map?.[key]?.status || "").toLowerCase();
+        const specialist = String(row.specialist_name || "").trim();
+        const parsedKey = parseChildSessionKey(key);
+        if (!parsedKey) {
+          insertEnrichmentEvent(db, {
+            jobId,
+            eventType: "reconcile_invalid_child_session_key",
+            message: `invalid child_session_key for specialist=${specialist}`,
+            context: {
+              specialist,
+              child_session_key: key || null,
+            },
+            dedupe: true,
+          });
+          continue;
+        }
+
+        let cached = sessionsCache.get(parsedKey.childAgentId);
+        if (!cached) {
+          const sessionsDir = join(stateDir, "agents", parsedKey.childAgentId, "sessions");
+          const sessionsJsonPath = join(sessionsDir, "sessions.json");
+          if (!existsSync(sessionsJsonPath)) {
+            cached = { ok: false, reason: "missing_sessions_json", sessionsJsonPath };
+          } else {
+            try {
+              const raw = fs.readFileSync(sessionsJsonPath, "utf8");
+              cached = {
+                ok: true,
+                map: JSON.parse(raw || "{}"),
+                sessionsDir,
+              };
+            } catch {
+              cached = { ok: false, reason: "invalid_sessions_json", sessionsJsonPath };
+            }
+          }
+          sessionsCache.set(parsedKey.childAgentId, cached);
+        }
+        if (!cached.ok) {
+          insertEnrichmentEvent(db, {
+            jobId,
+            eventType: "reconcile_sessions_unavailable",
+            message: `sessions map unavailable for child_agent_id=${parsedKey.childAgentId}`,
+            context: {
+              specialist,
+              child_agent_id: parsedKey.childAgentId,
+              child_session_key: parsedKey.key,
+              reason: cached.reason,
+              sessions_json_path: cached.sessionsJsonPath,
+            },
+            dedupe: true,
+          });
+          continue;
+        }
+
+        const st = String(cached.map?.[parsedKey.key]?.status || "").toLowerCase();
         if (st === "done") {
+          const sid = cached.map?.[parsedKey.key]?.sessionId;
+          const jsonlPath = sid ? join(cached.sessionsDir, `${sid}.jsonl`) : null;
+          const parsedResultJson = jsonlPath ? parseFinalSpecialistResultJson(jsonlPath) : null;
           db.prepare(
             `UPDATE enrichment_specialist_runs
-             SET status='DONE', completed_at=datetime('now')
+             SET status='DONE',
+                 completed_at=datetime('now'),
+                 result_json=COALESCE(?, result_json)
              WHERE job_id=? AND specialist_name=? AND status='PENDING'`,
-          ).run(jobId, row.specialist_name);
-          n++;
+          ).run(parsedResultJson, jobId, row.specialist_name);
+          const changed = db.prepare(`SELECT changes() AS n`).get()?.n ?? 0;
+          if (Number(changed) > 0) {
+            insertEnrichmentEvent(db, {
+              jobId,
+              eventType: "specialist_reconciled_done",
+              message: `specialist reconciled DONE via sessions_json: ${specialist}`,
+              context: {
+                specialist,
+                child_agent_id: parsedKey.childAgentId,
+                child_session_key: parsedKey.key,
+                detected_via: "sessions_json",
+                session_id: sid || null,
+                result_json_persisted: Boolean(parsedResultJson),
+              },
+              dedupe: false,
+            });
+            n++;
+          }
         }
       }
       return n;
@@ -548,6 +695,7 @@ const entry = {
       payloadJson: string;
       jobId: string;
       profileId: string;
+      workspacePath: string;
     }) {
       const turnSecRaw = Number.parseInt(
         process.env.ENRICH_TURN_TIMEOUT_SEC || "",
@@ -578,16 +726,7 @@ const entry = {
         let enrichStdout = "";
         let completeStdout = "";
         for (let i = 0; i < maxTicks; i++) {
-          const isFirst = i === 0;
-          const message =
-            phase === "enrich"
-              ? isFirst
-                ? `${enrichPrefix}:${payload}`
-                : `TICK:${payload}`
-              : phase === "complete"
-                ? `COMPLETE:${payload}`
-                : `COMPLETE_TICK:${payload}`;
-
+          let advanceToComplete = false;
           let db0: any | null = null;
           try {
             db0 = await openEnrichmentDb();
@@ -606,6 +745,22 @@ const entry = {
               params.jobId,
               params.agentId,
             );
+            if (phase === "enrich") {
+              const counts = db0
+                .prepare(
+                  `SELECT
+                     COUNT(*) AS total,
+                     SUM(CASE WHEN status='PENDING' THEN 1 ELSE 0 END) AS pending
+                   FROM enrichment_specialist_runs
+                   WHERE job_id = ?`,
+                )
+                .get(params.jobId);
+              const total = Number(counts?.total || 0);
+              const pending = Number(counts?.pending || 0);
+              if (total >= 10 && pending === 0) {
+                advanceToComplete = true;
+              }
+            }
           } finally {
             if (db0) {
               try {
@@ -613,6 +768,22 @@ const entry = {
               } catch {}
             }
           }
+          if (advanceToComplete) {
+            await resetSessionBestEffort(params.agentId);
+            await new Promise((res) => setTimeout(res, 2_000));
+            phase = "complete";
+            completeStdout = "";
+          }
+
+          const isFirst = i === 0;
+          const message =
+            phase === "enrich"
+              ? isFirst
+                ? `${enrichPrefix}:${payload}`
+                : `TICK:${payload}`
+              : phase === "complete"
+                ? `COMPLETE:${payload}`
+                : `COMPLETE_TICK:${payload}`;
 
           const argv = [
             "openclaw",
@@ -928,6 +1099,7 @@ const entry = {
                   payloadJson: String(row.payload_json || ""),
                   jobId,
                   profileId: String(row.profile_id || ""),
+                  workspacePath: configuredWorkspace,
                 });
                 activeRun = { jobId, wait: run.wait };
                 run

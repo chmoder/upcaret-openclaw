@@ -29,6 +29,34 @@ function stateDir() {
   return process.env.OPENCLAW_STATE_DIR || path.join(os.homedir(), ".openclaw");
 }
 
+function parseChildSessionKey(rawKey) {
+  const key = String(rawKey || "").trim();
+  const m = key.match(/^agent:([^:]+):subagent:([^:]+)$/);
+  if (!m) return null;
+  return { key, childAgentId: m[1], subagentId: m[2] };
+}
+
+function loadSessionsContextForAgent(agentId, cache) {
+  const aid = String(agentId || "").trim();
+  if (!aid) return { ok: false, reason: "missing_agent_id" };
+  if (cache.has(aid)) return cache.get(aid);
+  const sessionsDir = path.join(stateDir(), "agents", aid, "sessions");
+  const sessionsJsonPath = path.join(sessionsDir, "sessions.json");
+  let out;
+  if (!fs.existsSync(sessionsJsonPath)) {
+    out = { ok: false, reason: "missing_sessions_json", sessionsJsonPath, sessionsDir };
+  } else {
+    try {
+      const sessionsMap = JSON.parse(fs.readFileSync(sessionsJsonPath, "utf8"));
+      out = { ok: true, sessionsMap, sessionsDir, sessionsJsonPath };
+    } catch {
+      out = { ok: false, reason: "invalid_sessions_json", sessionsJsonPath, sessionsDir };
+    }
+  }
+  cache.set(aid, out);
+  return out;
+}
+
 function extractJsonFromMarkdown(text) {
   if (typeof text !== "string") return null;
   const m = text.match(/```json\s*([\s\S]*?)```/);
@@ -139,28 +167,6 @@ function main() {
     process.exit(1);
   }
 
-  const agentId =
-    flags["agent-id"] ||
-    String(job.orchestrator_agent_id || "").trim() ||
-    process.env.ENRICH_ORCH_AGENT_ID ||
-    "profile-enrich";
-
-  const sessionsJsonPath = path.join(
-    stateDir(),
-    "agents",
-    agentId,
-    "sessions",
-    "sessions.json",
-  );
-  if (!fs.existsSync(sessionsJsonPath)) {
-    console.error(`ERROR: sessions.json not found: ${sessionsJsonPath}`);
-    db.close();
-    process.exit(1);
-  }
-
-  const sessionsMap = JSON.parse(fs.readFileSync(sessionsJsonPath, "utf8"));
-  const sessionsDir = path.dirname(sessionsJsonPath);
-
   const runs = db
     .prepare(
       `SELECT specialist_name, status, child_session_key, completed_at
@@ -170,25 +176,54 @@ function main() {
 
   db.close();
 
+  const sessionsCache = new Map();
   const rows = [];
   for (const r of runs) {
     const key = String(r.child_session_key || "").trim();
-    const meta = key ? sessionsMap[key] : null;
-    const sid = meta?.sessionId;
-    const jsonl = sid ? path.join(sessionsDir, `${sid}.jsonl`) : null;
-    const audit = jsonl ? auditSessionFile(jsonl) : { error: "no_session_key", counts: {}, queries: [] };
+    const parsedKey = parseChildSessionKey(key);
+    let sid = null;
+    let jsonl = null;
+    let childAgentId = null;
+    let audit = { error: "no_session_key", counts: {}, queries: [] };
+    let sessionsError = null;
+
+    if (!parsedKey) {
+      sessionsError = "invalid_child_session_key";
+      audit = { error: "invalid_child_session_key", counts: {}, queries: [] };
+    } else {
+      childAgentId = parsedKey.childAgentId;
+      const sessionsCtx = loadSessionsContextForAgent(childAgentId, sessionsCache);
+      if (!sessionsCtx.ok) {
+        sessionsError = sessionsCtx.reason || "sessions_unavailable";
+        audit = { error: sessionsError, counts: {}, queries: [] };
+      } else {
+        const meta = sessionsCtx.sessionsMap?.[parsedKey.key] || null;
+        sid = meta?.sessionId || null;
+        jsonl = sid ? path.join(sessionsCtx.sessionsDir, `${sid}.jsonl`) : null;
+        audit = jsonl
+          ? auditSessionFile(jsonl)
+          : { error: "session_not_found_in_map", counts: {}, queries: [] };
+      }
+    }
 
     let failureMode = "—";
     if (audit.error === "missing_file") failureMode = "session file missing";
     else if (audit.error === "no_session_key") failureMode = "no child_session_key";
+    else if (audit.error === "invalid_child_session_key") failureMode = "invalid child_session_key format";
+    else if (audit.error === "missing_sessions_json") failureMode = "missing child agent sessions.json";
+    else if (audit.error === "invalid_sessions_json") failureMode = "invalid child agent sessions.json";
+    else if (audit.error === "session_not_found_in_map") failureMode = "session key absent from child agent sessions.json";
     else if (audit.lastFindingsLen === 0) failureMode = "no verified findings";
     else if (audit.lastFindingsLen == null) failureMode = "no final JSON block parsed";
 
     rows.push({
       specialist: r.specialist_name,
       run_status: r.status,
+      child_agent_id: childAgentId,
+      child_session_key: key || null,
       session_id: sid || null,
       jsonl: jsonl,
+      sessions_error: sessionsError,
       web_search: audit.counts.web_search ?? 0,
       web_fetch: audit.counts.web_fetch ?? 0,
       browser: audit.counts.browser ?? 0,
@@ -204,7 +239,8 @@ function main() {
   const summary = {
     job_id: job.job_id,
     profile_id: job.profile_id,
-    orchestrator_agent_id: agentId,
+    orchestrator_agent_id: String(job.orchestrator_agent_id || "").trim() || null,
+    forced_agent_id: flags["agent-id"] || null,
     completed_at: job.completed_at,
     specialists_audited: rows.length,
   };
