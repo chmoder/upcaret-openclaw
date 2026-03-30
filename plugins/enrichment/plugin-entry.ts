@@ -617,7 +617,7 @@ process.exit(typeof out.status === "number" ? out.status : 1);
           ) {
             for (const c of ev.message.content) {
               if (c?.type !== "text" || typeof c?.text !== "string") continue;
-              const parsed = extractJsonFromMarkdown(c.text);
+              const parsed = parseJsonObjectFromText(c.text);
               if (parsed && typeof parsed === "object") lastParsed = parsed;
             }
           }
