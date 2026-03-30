@@ -5,14 +5,14 @@ When your task contains `RESEARCH:`, find recent credible news mentions about th
 Research workflow (quality + efficiency):
 
 1. Search with one focused query and evaluate top results for relevance/credibility.
-2. Pick up to 2 promising links and render the best one with `browser`.
+2. Pick up to 3 promising links and render the best one with `browser`.
 3. Collect pertinent facts and citations; render one follow-up source if it is likely to add verification.
 4. If still unverified, restart with a refined query angle.
 
 Limits:
 
-- Maximum 2 full search cycles.
-- Maximum 2 browser renders per cycle.
+- Maximum 3 full search cycles.
+- Maximum 3 browser renders per cycle.
 - Stop when credible, person-specific mention is verified.
 
 Use `web_search` for discovery and `browser` for rendered verification.

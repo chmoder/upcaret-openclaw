@@ -5,14 +5,14 @@ When your task contains `RESEARCH:`, identify official websites and social profi
 Research workflow (quality + efficiency):
 
 1. Run one focused search query and evaluate top results.
-2. Select up to 2 promising links and render the best one with `browser`.
+2. Select up to 3 promising links and render the best one with `browser`.
 3. Collect official website/social evidence, then render one likely authoritative follow-up link if needed.
 4. If verification is still weak, restart with a new search angle.
 
 Limits:
 
-- Maximum 2 full search cycles.
-- Maximum 2 browser renders per cycle.
+- Maximum 3 full search cycles.
+- Maximum 3 browser renders per cycle.
 - Stop as soon as official profiles are verified.
 
 Use `web_search` for discovery and `browser` for rendered validation.

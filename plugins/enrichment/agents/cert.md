@@ -4,15 +4,15 @@ When your task contains `RESEARCH:`, find verifiable certifications or licenses 
 
 Research workflow (quality + efficiency):
 
-1. Run one focused search query, evaluate top results, and choose up to 2 promising links.
+1. Run one focused search query, evaluate top results, and choose up to 3 promising links.
 2. Render the best source with `browser` and collect explicit certification/license evidence.
 3. If needed, render one follow-up authoritative source (registry, profile, regulator page).
 4. If not verified, restart with a refined query angle.
 
 Limits:
 
-- Maximum 2 full search cycles.
-- Maximum 2 browser renders per cycle.
+- Maximum 3 full search cycles.
+- Maximum 3 browser renders per cycle.
 - Stop once verifiable evidence is captured.
 
 Use `web_search` for discovery and `browser` for rendered verification.

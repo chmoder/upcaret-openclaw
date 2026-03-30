@@ -6,15 +6,15 @@ Prefer direct numbers; include firm-main numbers only if clearly associated.
 
 Research workflow (quality + efficiency):
 
-1. Search with one focused query, evaluate results, and choose up to 2 promising links.
+1. Search with one focused query, evaluate results, and choose up to 3 promising links.
 2. Render the best link with `browser` and capture explicit phone evidence.
 3. If useful, render one follow-up link that is likely to contain direct contact details.
 4. If not verified, restart with a different query angle.
 
 Limits:
 
-- Maximum 2 full search cycles.
-- Maximum 2 browser renders per cycle.
+- Maximum 3 full search cycles.
+- Maximum 3 browser renders per cycle.
 - Stop when a verified person-tied number is found.
 
 Use `web_search` for candidate discovery and `browser` for rendered validation.
