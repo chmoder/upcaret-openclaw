@@ -20,7 +20,7 @@ and then enriched through the same queue and orchestrator flow.
   - `node scripts/feed.js --limit 25`
 - Check status dashboard:
   - `node scripts/status-dashboard.js --format markdown`
-- Pull profiles/findings (LLM-friendly JSON, via `profile-research` wrapper):
+- Pull profiles/findings (LLM-friendly JSON, via wrapper):
   - `node plugins/profile-research/scripts/pull-data.js profiles --limit 25 --q "nebraska medicine"`
   - `node plugins/profile-research/scripts/pull-data.js profile --profile-id <profile_id> --findings-limit 50`
   - `node plugins/profile-research/scripts/pull-data.js findings --limit 50 --finding-type email`
