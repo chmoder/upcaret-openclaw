@@ -1262,6 +1262,8 @@ process.exit(typeof out.status === "number" ? out.status : 1);
     let interval: ReturnType<typeof setInterval> | null = null;
     let tickInFlight: Promise<void> | null = null;
     let activeRun: null | { jobId: string; wait: () => Promise<any> } = null;
+    /** When the enrich orchestrator CLI exits successfully, allow finalize once all specialist rows are non-pending (even if fewer than 10 rows). */
+    let enrichOrchestratorSucceededJobId: string | null = null;
     let finalizingJobId: string | null = null;
     let dispatchCooldownUntilMs = 0;
     let lastIdleLogAt = 0;
@@ -1400,7 +1402,11 @@ process.exit(typeof out.status === "number" ? out.status : 1);
                   .get(runningJobId);
                 const total = Number(counts?.total || 0);
                 const pending = Number(counts?.pending || 0);
-                const allTerminal = total >= 10 && pending === 0;
+                const orchDoneOk = enrichOrchestratorSucceededJobId === runningJobId;
+                const allSpecialistsSettled = pending === 0;
+                const allTerminal =
+                  allSpecialistsSettled &&
+                  (total >= 10 || orchDoneOk);
                 if (allTerminal) {
                   if (finalizingJobId && finalizingJobId !== runningJobId) return;
                   finalizingJobId = runningJobId;
@@ -1419,6 +1425,9 @@ process.exit(typeof out.status === "number" ? out.status : 1);
                       workspacePath,
                     });
                   } finally {
+                    if (enrichOrchestratorSucceededJobId === runningJobId) {
+                      enrichOrchestratorSucceededJobId = null;
+                    }
                     if (finalizingJobId === runningJobId) finalizingJobId = null;
                   }
                   if (!finalizeResult.ok) {
@@ -1434,6 +1443,9 @@ process.exit(typeof out.status === "number" ? out.status : 1);
                   return;
                 }
                 if (state.elapsedMs > staleMs) {
+                  if (enrichOrchestratorSucceededJobId === runningJobId) {
+                    enrichOrchestratorSucceededJobId = null;
+                  }
                   await markFailed(
                     db,
                     runningJobId,
@@ -1526,7 +1538,10 @@ process.exit(typeof out.status === "number" ? out.status : 1);
                 run
                   .wait()
                   .then(async (result) => {
-                    if (result.ok) return;
+                    if (result.ok) {
+                      enrichOrchestratorSucceededJobId = jobId;
+                      return;
+                    }
                     const db2 = await openEnrichmentDb();
                     try {
                       await markFailed(
