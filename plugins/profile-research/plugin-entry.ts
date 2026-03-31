@@ -149,6 +149,97 @@ const entry = {
       log.info(`Ensured acp.allowedAgents includes: ${required.join(", ")}`);
     }
 
+    /**
+     * Default workspace agents need an explicit subagents.allowAgents list or sessions_spawn to
+     * other agents is forbidden. Allow spawning the research + enrichment orchestrator agents
+     * (sec-iapd is skill/exec-only — no separate agent id).
+     */
+    const MAIN_WORKSPACE_SPAWN_TARGETS = [
+      "profile-researcher",
+      "profile-enrich",
+    ] as const;
+
+    async function ensureMainAgentsAllowPluginSpawns() {
+      const cfg: any = readFullConfig();
+      if (!cfg?.gateway?.mode) return;
+
+      const parentIds = new Set(["main", "general"]);
+      const list0: any[] = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
+      const list = [...list0];
+      let changed = false;
+
+      const findIdx = (id: string) =>
+        list.findIndex((a: any) => normalizeAgentId(String(a?.id || "")) === id);
+
+      // Some deployments have legacy webchat sessions under agent:general:main. If
+      // "general" isn't in agents.list, OpenClaw treats its spawn allowlist as empty.
+      // To keep "install + enable" sufficient, ensure both main and general exist.
+      const mainIdx = findIdx("main");
+      const generalIdx = findIdx("general");
+      const template = (mainIdx >= 0 ? list[mainIdx] : null) ?? {};
+
+      const upsertMissingAlias = (id: "main" | "general") => {
+        const idx = findIdx(id);
+        if (idx >= 0) return;
+        const entry: any = {
+          id,
+          name: id === "general" ? "General" : "Main",
+          workspace:
+            template?.workspace ??
+            cfg?.agents?.defaults?.workspace ??
+            "/data/.openclaw/workspace",
+          model: template?.model ?? cfg?.agents?.defaults?.model,
+        };
+        delete entry.tools;
+        list.push(entry);
+        changed = true;
+      };
+
+      if (mainIdx >= 0 && generalIdx === -1) upsertMissingAlias("general");
+      if (generalIdx >= 0 && mainIdx === -1) upsertMissingAlias("main");
+
+      const patchedList = list.map((entry: any) => {
+        const id = normalizeAgentId(String(entry?.id || ""));
+        if (!parentIds.has(id)) return entry;
+
+        const sub = entry?.subagents && typeof entry.subagents === "object" ? entry.subagents : {};
+        const allow0 = Array.isArray(sub.allowAgents)
+          ? sub.allowAgents.map((x: any) => String(x || "").trim()).filter(Boolean)
+          : [];
+        if (allow0.some((v: string) => v === "*")) return entry;
+        const allow = Array.from(
+          new Set([...allow0, ...MAIN_WORKSPACE_SPAWN_TARGETS.map(String)]),
+        );
+        const same =
+          allow.length === allow0.length &&
+          allow.every((v: string, i: number) => v === allow0[i]);
+        if (same) return entry;
+
+        changed = true;
+        return {
+          ...entry,
+          subagents: {
+            ...sub,
+            allowAgents: allow,
+          },
+        };
+      });
+
+      if (!changed) return;
+
+      const patched = {
+        ...cfg,
+        agents: {
+          ...(cfg?.agents ?? {}),
+          list: patchedList,
+        },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      log.info(
+        `Ensured main|general subagents.allowAgents includes: ${MAIN_WORKSPACE_SPAWN_TARGETS.join(", ")}`,
+      );
+    }
+
     void ensureProfileResearchAgent().catch((err: any) => {
       log.warn(
         `WARN — unable to auto-configure profile-researcher agent: ${String(err?.message ?? err)}`,
@@ -162,6 +253,12 @@ const entry = {
     void ensureAcpAllowedAgents().catch((err: any) => {
       log.warn(
         `WARN — unable to auto-configure acp.allowedAgents: ${String(err?.message ?? err)}`,
+      );
+    });
+
+    void ensureMainAgentsAllowPluginSpawns().catch((err: any) => {
+      log.warn(
+        `WARN — unable to set subagents.allowAgents for main|general: ${String(err?.message ?? err)}`,
       );
     });
 
