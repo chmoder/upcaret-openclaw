@@ -12,6 +12,20 @@ This plugin enriches profiles regardless of source system.
 Profiles can be imported from any system (`source_system`, `source_key`, `source_data`)
 and then enriched through the same queue and orchestrator flow.
 
+## Working directory (read this first)
+
+Commands below use `node scripts/...`. That path is **only valid** when one of these is true:
+
+1. **Shell cwd is the OpenClaw default workspace** (`agents.defaults.workspace`, usually `~/.openclaw/workspace`), where the gateway installs **shim** scripts under `scripts/` that forward to the real plugin.
+2. **Shell cwd is the `upcaret-openclaw` git repo root**, which includes **`scripts/`** delegates that run `plugins/enrichment/scripts/*.js` (same SQLite DB via `~/.openclaw/enrichment/enrichment.db` unless `ENRICHMENT_DB_PATH` is set).
+
+If the agent’s **session workspace** is something else (e.g. a custom folder without `scripts/`), **`scripts/enqueue.js` will not exist there**. Before running a command, **`cd` to (1) or (2)**, or call the real script explicitly:
+
+- `node ~/.openclaw/workspace/scripts/enqueue.js --profile-id <uuid>`
+- `node /path/to/upcaret-openclaw/plugins/enrichment/scripts/enqueue.js --profile-id <uuid>`
+
+Do **not** assume `../.openclaw/extensions/...` relative to an arbitrary workspace resolves correctly; prefer **`~/.openclaw/extensions/enrichment/SKILL.md`** or the **`plugins/enrichment/`** paths inside this repo.
+
 ## Typical operations
 
 - Enqueue a specific profile:

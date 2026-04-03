@@ -1,0 +1,11 @@
+{
+  "id": "main",
+  "name": "Main",
+  "workspace": "/Users/tcross/.openclaw/workspace",
+  "model": {
+    "primary": "openai-codex/gpt-5.4-mini"
+  },
+  "subagents": {
+    "allowAgents": ["profile-researcher", "profile-enrich"]
+  }
+}

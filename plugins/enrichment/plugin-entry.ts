@@ -37,14 +37,14 @@ const entry = {
       }
     }
 
-    async function ensureTrustedPluginsAllow() {
+    async function ensureTrustedPluginsAllow(): Promise<boolean> {
       const trusted = ["enrichment", "profile-research", "sec-iapd"];
       const cfg: any = readFullConfig();
       if (!cfg?.gateway?.mode) {
         log.warn(
           "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
         );
-        return;
+        return false;
       }
       const allow0 = Array.isArray(cfg?.plugins?.allow)
         ? cfg.plugins.allow
@@ -55,7 +55,7 @@ const entry = {
       const same =
         allow.length === allow0.length &&
         allow.every((id: any, i: number) => String(id) === String(allow0[i]));
-      if (same) return;
+      if (same) return false;
 
       const patched = {
         ...cfg,
@@ -66,6 +66,43 @@ const entry = {
       };
       await api.runtime.config.writeConfigFile(patched);
       log.info(`Pinned plugins.allow: ${allow.join(", ")}`);
+      return true;
+    }
+
+    /**
+     * Control UI can normalize enabled plugin entries by adding `config: {}` at runtime,
+     * which triggers a gateway restart when `commands.restart=true`.
+     *
+     * Pre-seed empty configs once so normal tool usage doesn't cause surprise restarts.
+     */
+    async function ensurePluginEntryConfigDefaults() {
+      const cfg: any = readFullConfig();
+      if (!cfg?.gateway?.mode) return;
+      const entries0 =
+        cfg?.plugins?.entries && typeof cfg.plugins.entries === "object"
+          ? cfg.plugins.entries
+          : {};
+      const targets = ["enrichment", "profile-research", "sec-iapd", "browser"];
+      let changed = false;
+      const entries: any = { ...entries0 };
+      for (const id of targets) {
+        const e = entries[id];
+        if (!e || typeof e !== "object") continue;
+        if (e.enabled !== true) continue;
+        if ("config" in e && e.config != null) continue;
+        entries[id] = { ...e, config: e?.config && typeof e.config === "object" ? e.config : {} };
+        changed = true;
+      }
+      if (!changed) return;
+      const patched = {
+        ...cfg,
+        plugins: {
+          ...(cfg?.plugins ?? {}),
+          entries,
+        },
+      };
+      await api.runtime.config.writeConfigFile(patched);
+      log.info(`Seeded plugins.entries.*.config defaults for: ${targets.join(", ")}`);
     }
 
     const ENRICHMENT_ORCH_AGENT_ID = "profile-enrich";
@@ -85,13 +122,13 @@ const entry = {
     ] as const;
     const ENRICHMENT_CHILD_AGENT_IDS = ENRICHMENT_CHILD_AGENT_SPECS.map((s) => s.id);
 
-    async function ensureEnrichmentAgents() {
+    async function ensureEnrichmentAgents(): Promise<boolean> {
       const cfg: any = readFullConfig();
       if (!cfg?.gateway?.mode) {
         log.warn(
           "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
         );
-        return;
+        return false;
       }
       const list: any[] = Array.isArray(cfg?.agents?.list)
         ? cfg.agents.list
@@ -155,7 +192,7 @@ const entry = {
         upsertAgent(spec.id, `Enrichment: ${spec.label}`);
       }
 
-      if (!changed) return;
+      if (!changed) return false;
       const patched = {
         ...cfg,
         agents: { ...(cfg?.agents ?? {}), list: newList },
@@ -164,6 +201,7 @@ const entry = {
       log.info(
         `Configured enrichment agents (orchestrator + ${ENRICHMENT_CHILD_AGENT_IDS.length} child agents) workspace=${ROOT}`,
       );
+      return true;
     }
 
     function makeWorkspaceShimScript(scriptName: string) {
@@ -199,12 +237,12 @@ process.exit(typeof out.status === "number" ? out.status : 1);
 `;
     }
 
-    async function ensureWorkspaceConsumerScripts(cfg: any) {
+    async function ensureWorkspaceConsumerScripts(cfg: any): Promise<boolean> {
       if (!cfg?.gateway?.mode) {
         log.warn(
           "OpenClaw setup not complete (gateway.mode missing). Finish setup UI, then restart gateway; plugin will self-configure.",
         );
-        return;
+        return false;
       }
       const workspace = String(
         cfg?.agents?.defaults?.workspace || join(stateDir, "workspace"),
@@ -215,6 +253,7 @@ process.exit(typeof out.status === "number" ? out.status : 1);
       const shims = [
         { name: "save-profiles.js" },
         { name: "enqueue.js" },
+        { name: "status-dashboard.js" },
       ];
       const written: string[] = [];
       for (const shim of shims) {
@@ -242,17 +281,8 @@ process.exit(typeof out.status === "number" ? out.status : 1);
       if (written.length > 0) {
         log.info(`Installed workspace consumer shims: ${written.join(", ")}`);
       }
+      return written.length > 0;
     }
-
-    void (async () => {
-      await ensureTrustedPluginsAllow();
-      await ensureEnrichmentAgents();
-      await ensureWorkspaceConsumerScripts(readFullConfig());
-    })().catch((err: any) => {
-      log.warn(
-        `WARN — unable to auto-configure enrichment startup config: ${String(err?.message ?? err)}`,
-      );
-    });
 
     const POLL_INTERVAL_MS = Number.parseInt(
       process.env.ENRICH_ENGINE_INTERVAL_MS || "",
@@ -512,6 +542,153 @@ process.exit(typeof out.status === "number" ? out.status : 1);
       await api.runtime.config.writeConfigFile(patched);
       return { applied: true as const, cfg: patched };
     }
+
+    // One-time prerequisite bootstrap marker. Avoids surprise restarts during normal runs.
+    const PREREQ_BOOTSTRAP_MARKER_PATH = join(
+      api.runtime.state.resolveStateDir(),
+      "enrichment",
+      "prereq-bootstrap-v1.json",
+    );
+
+    function hasPrereqBootstrapMarker() {
+      return existsSync(PREREQ_BOOTSTRAP_MARKER_PATH);
+    }
+
+    function writePrereqBootstrapMarker() {
+      try {
+        const dir = join(PREREQ_BOOTSTRAP_MARKER_PATH, "..");
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(
+          PREREQ_BOOTSTRAP_MARKER_PATH,
+          JSON.stringify({ version: 1, bootstrapped_at: new Date().toISOString() }),
+          "utf8",
+        );
+      } catch (err: any) {
+        log.warn(
+          `WARN — unable to write enrichment prerequisite marker: ${String(err?.message ?? err)}`,
+        );
+      }
+    }
+
+    /** Apply maxChildren + browser settings once; returns true if a write occurred (gateway may restart). */
+    async function applyPrerequisiteGatewayConfig(): Promise<boolean> {
+      if (hasPrereqBootstrapMarker()) return false;
+      try {
+        let cfg = readFullConfig();
+
+        const maxChildren = Number(
+          cfg?.agents?.defaults?.subagents?.maxChildrenPerAgent ?? 5,
+        );
+        const needsChildrenLimit =
+          !Number.isFinite(maxChildren) || maxChildren < 10;
+        const allowHostControl =
+          cfg?.agents?.defaults?.sandbox?.browser?.allowHostControl;
+        const browserSandboxEnabled =
+          cfg?.agents?.defaults?.sandbox?.browser?.enabled;
+        const headless = cfg?.browser?.headless;
+        const profileIsFull = (cfg?.tools?.profile ?? "coding") === "full";
+        const needsBrowserPrereqs = !(
+          allowHostControl === true &&
+          browserSandboxEnabled === true &&
+          headless === true &&
+          profileIsFull
+        );
+
+        if (needsChildrenLimit || needsBrowserPrereqs) {
+          log.warn(
+            "Enrichment first-run bootstrap: applying gateway prerequisites (this will trigger a one-time gateway restart).",
+          );
+        }
+
+        const outLimit = await ensureSubagentChildrenLimit(cfg);
+        if (outLimit.applied) {
+          log.info(
+            "Applied agents.defaults.subagents.maxChildrenPerAgent=12 for enrichment (orchestrator spawns 10 specialists). A gateway restart may follow.",
+          );
+          writePrereqBootstrapMarker();
+          return true;
+        }
+        cfg = readFullConfig();
+        const outBrowser = await ensureBrowserConfig(cfg);
+        if (outBrowser.applied) {
+          log.info(
+            'Applied browser prerequisites for enrichment (headless browser, tools.profile=full). A gateway restart may follow.',
+          );
+          writePrereqBootstrapMarker();
+          return true;
+        }
+
+        // No changes needed; still mark as bootstrapped so we don't re-check on every startup.
+        writePrereqBootstrapMarker();
+      } catch (err: any) {
+        log.warn(
+          `WARN — prerequisite gateway config: ${String(err?.message ?? err)}`,
+        );
+      }
+      return false;
+    }
+
+    // One-time enrichment bootstrap marker (covers config writes beyond prereqs).
+    const ENRICH_BOOTSTRAP_MARKER_PATH = join(
+      api.runtime.state.resolveStateDir(),
+      "enrichment",
+      "bootstrap-v1.json",
+    );
+
+    function hasEnrichmentBootstrapMarker() {
+      return existsSync(ENRICH_BOOTSTRAP_MARKER_PATH);
+    }
+
+    function writeEnrichmentBootstrapMarker() {
+      try {
+        const dir = join(ENRICH_BOOTSTRAP_MARKER_PATH, "..");
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(
+          ENRICH_BOOTSTRAP_MARKER_PATH,
+          JSON.stringify({ version: 1, bootstrapped_at: new Date().toISOString() }),
+          "utf8",
+        );
+      } catch (err: any) {
+        log.warn(
+          `WARN — unable to write enrichment bootstrap marker: ${String(err?.message ?? err)}`,
+        );
+      }
+    }
+
+    async function runEnrichmentBootstrapOnce() {
+      const force = String(process.env.ENRICH_BOOTSTRAP_FORCE || "").trim() === "1";
+      if (!force && hasEnrichmentBootstrapMarker()) return;
+
+      // Clear, up-front UX signal: this section may write config and restart the gateway once.
+      log.warn(
+        "Enrichment bootstrap: checking gateway config (first enable). If changes are needed, OpenClaw may restart the gateway once.",
+      );
+
+      const wroteAllow = await ensureTrustedPluginsAllow();
+      const wroteAgents = await ensureEnrichmentAgents();
+      const wroteShims = await ensureWorkspaceConsumerScripts(readFullConfig());
+      const wrotePrereqs = await applyPrerequisiteGatewayConfig();
+
+      if (wroteAllow || wroteAgents || wroteShims || wrotePrereqs) {
+        log.warn(
+          "Enrichment bootstrap applied config changes. If the gateway restarts, bootstrap will finalize automatically on next startup.",
+        );
+        return;
+      }
+
+      writeEnrichmentBootstrapMarker();
+      log.info(
+        "Enrichment bootstrap complete. This plugin will not auto-modify gateway config again unless ENRICH_BOOTSTRAP_FORCE=1.",
+      );
+    }
+
+    void (async () => {
+      await runEnrichmentBootstrapOnce();
+    })().catch((err: any) => {
+      log.warn(
+        `WARN — unable to auto-configure enrichment startup config: ${String(err?.message ?? err)}`,
+      );
+    });
 
     async function resetSessionBestEffort(agentId: string) {
       try {
@@ -1283,35 +1460,19 @@ process.exit(typeof out.status === "number" ? out.status : 1);
         }
 
         try {
-          const out = await ensureSubagentChildrenLimit(cfgForValidate);
-          cfgForValidate = out.cfg;
-          if (out.applied) {
+          if (await applyPrerequisiteGatewayConfig()) {
             log.error(
-              "Applied agents.defaults.subagents.maxChildrenPerAgent=12 for enrichment (10 specialist spawns). Restart gateway to apply.",
+              'Applied enrichment gateway prerequisites (subagent limit and/or browser). Restart the gateway to continue if it did not restart automatically.',
             );
             return;
           }
         } catch (err: any) {
           log.warn(
-            `WARN — unable to auto-apply maxChildrenPerAgent: ${String(err?.message ?? err)}`,
+            `WARN — applyPrerequisiteGatewayConfig: ${String(err?.message ?? err)}`,
           );
         }
 
-        try {
-          const out = await ensureBrowserConfig(cfgForValidate);
-          cfgForValidate = out.cfg;
-          if (out.applied) {
-            log.error(
-              'Configured browser prerequisites (browser.headless=true, agents.defaults.sandbox.browser.allowHostControl=true, agents.defaults.sandbox.browser.enabled=true, tools.profile="full"). Restart gateway to apply.',
-            );
-            return;
-          }
-        } catch (err: any) {
-          log.warn(
-            `WARN — unable to auto-configure browser settings: ${String(err?.message ?? err)}`,
-          );
-        }
-
+        cfgForValidate = readFullConfig();
         const configErrors = validateGatewayConfig(cfgForValidate);
         if (configErrors.length > 0) {
           log.error("SETUP ERRORS — fix these and restart gateway:");
@@ -1479,37 +1640,7 @@ process.exit(typeof out.status === "number" ? out.status : 1);
                   return;
                 }
 
-                let cfg0 = readFullConfig();
-                try {
-                  const outLimit = await ensureSubagentChildrenLimit(cfg0);
-                  cfg0 = outLimit.cfg;
-                  if (outLimit.applied) {
-                    log.error(
-                      "Applied agents.defaults.subagents.maxChildrenPerAgent=12. Restart gateway to apply.",
-                    );
-                    dispatchCooldownUntilMs = Date.now() + 30_000;
-                    return;
-                  }
-                } catch (err: any) {
-                  log.warn(
-                    `WARN — unable to auto-apply maxChildrenPerAgent: ${String(err?.message ?? err)}`,
-                  );
-                }
-                try {
-                  const out = await ensureBrowserConfig(cfg0);
-                  cfg0 = out.cfg;
-                  if (out.applied) {
-                    log.error(
-                      'Configured browser prerequisites (browser.headless=true, agents.defaults.sandbox.browser.allowHostControl=true, agents.defaults.sandbox.browser.enabled=true, tools.profile="full"). Restart gateway to apply.',
-                    );
-                    dispatchCooldownUntilMs = Date.now() + 30_000;
-                    return;
-                  }
-                } catch (err: any) {
-                  log.warn(
-                    `WARN — unable to auto-configure browser settings: ${String(err?.message ?? err)}`,
-                  );
-                }
+                const cfg0 = readFullConfig();
                 const configuredWorkspace = String(
                   row.orchestrator_workspace ||
                     process.env.ENRICHMENT_WORKSPACE ||

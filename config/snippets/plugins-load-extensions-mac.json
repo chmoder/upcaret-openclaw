@@ -1,0 +1,9 @@
+{
+  "load": {
+    "paths": [
+      "/Users/tcross/.openclaw/extensions/profile-research",
+      "/Users/tcross/.openclaw/extensions/enrichment",
+      "/Users/tcross/.openclaw/extensions/sec-iapd"
+    ]
+  }
+}

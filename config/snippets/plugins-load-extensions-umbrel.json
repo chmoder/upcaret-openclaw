@@ -1,0 +1,9 @@
+{
+  "load": {
+    "paths": [
+      "/data/.openclaw/extensions/profile-research",
+      "/data/.openclaw/extensions/enrichment",
+      "/data/.openclaw/extensions/sec-iapd"
+    ]
+  }
+}

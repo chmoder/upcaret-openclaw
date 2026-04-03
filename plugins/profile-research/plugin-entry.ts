@@ -163,7 +163,7 @@ const entry = {
       const cfg: any = readFullConfig();
       if (!cfg?.gateway?.mode) return;
 
-      const parentIds = new Set(["main", "general"]);
+      const parentIds = new Set(["main", "general", "advisor-enrich"]);
       const list0: any[] = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : [];
       const list = [...list0];
       let changed = false;
@@ -171,9 +171,10 @@ const entry = {
       const findIdx = (id: string) =>
         list.findIndex((a: any) => normalizeAgentId(String(a?.id || "")) === id);
 
-      // Some deployments have legacy webchat sessions under agent:general:main. If
-      // "general" isn't in agents.list, OpenClaw treats its spawn allowlist as empty.
-      // To keep "install + enable" sufficient, ensure both main and general exist.
+      // Some deployments have legacy webchat sessions under agent:general:main (or agent:main:main).
+      // If the parent agent id isn't present in agents.list, OpenClaw treats its spawn allowlist as empty.
+      // To keep "install + enable" sufficient, ensure both main and general exist even when *neither*
+      // is explicitly configured yet.
       const mainIdx = findIdx("main");
       const generalIdx = findIdx("general");
       const template = (mainIdx >= 0 ? list[mainIdx] : null) ?? {};
@@ -195,8 +196,8 @@ const entry = {
         changed = true;
       };
 
-      if (mainIdx >= 0 && generalIdx === -1) upsertMissingAlias("general");
-      if (generalIdx >= 0 && mainIdx === -1) upsertMissingAlias("main");
+      if (mainIdx === -1) upsertMissingAlias("main");
+      if (generalIdx === -1) upsertMissingAlias("general");
 
       const patchedList = list.map((entry: any) => {
         const id = normalizeAgentId(String(entry?.id || ""));
