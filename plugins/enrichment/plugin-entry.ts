@@ -75,9 +75,9 @@ const entry = {
      *
      * Pre-seed empty configs once so normal tool usage doesn't cause surprise restarts.
      */
-    async function ensurePluginEntryConfigDefaults() {
+    async function ensurePluginEntryConfigDefaults(): Promise<boolean> {
       const cfg: any = readFullConfig();
-      if (!cfg?.gateway?.mode) return;
+      if (!cfg?.gateway?.mode) return false;
       const entries0 =
         cfg?.plugins?.entries && typeof cfg.plugins.entries === "object"
           ? cfg.plugins.entries
@@ -93,7 +93,7 @@ const entry = {
         entries[id] = { ...e, config: e?.config && typeof e.config === "object" ? e.config : {} };
         changed = true;
       }
-      if (!changed) return;
+      if (!changed) return false;
       const patched = {
         ...cfg,
         plugins: {
@@ -103,6 +103,7 @@ const entry = {
       };
       await api.runtime.config.writeConfigFile(patched);
       log.info(`Seeded plugins.entries.*.config defaults for: ${targets.join(", ")}`);
+      return true;
     }
 
     const ENRICHMENT_ORCH_AGENT_ID = "profile-enrich";
@@ -664,12 +665,19 @@ process.exit(typeof out.status === "number" ? out.status : 1);
         "Enrichment bootstrap: checking gateway config (first enable). If changes are needed, OpenClaw may restart the gateway once.",
       );
 
+      const wroteEntryConfigs = await ensurePluginEntryConfigDefaults();
       const wroteAllow = await ensureTrustedPluginsAllow();
       const wroteAgents = await ensureEnrichmentAgents();
       const wroteShims = await ensureWorkspaceConsumerScripts(readFullConfig());
       const wrotePrereqs = await applyPrerequisiteGatewayConfig();
 
-      if (wroteAllow || wroteAgents || wroteShims || wrotePrereqs) {
+      if (
+        wroteEntryConfigs ||
+        wroteAllow ||
+        wroteAgents ||
+        wroteShims ||
+        wrotePrereqs
+      ) {
         log.warn(
           "Enrichment bootstrap applied config changes. If the gateway restarts, bootstrap will finalize automatically on next startup.",
         );
